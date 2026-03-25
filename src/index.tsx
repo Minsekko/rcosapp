@@ -1824,13 +1824,583 @@ app.get('/', (c) => {
     <!-- ===================== 공장 레이아웃 ===================== -->
     <div id="section-factory" class="section">
       <div class="card mb-4">
-        <h2 class="font-semibold text-white mb-1 flex items-center gap-2">
-          <i class="fas fa-map text-indigo-400"></i>
-          공장 구역 배치도
-        </h2>
-        <p class="text-xs text-slate-400 mb-5">구역을 클릭하면 상세 정보를 확인할 수 있습니다</p>
-        
-        <!-- 공장 레이아웃 그리드 -->
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h2 class="font-semibold text-white flex items-center gap-2">
+              <i class="fas fa-map text-indigo-400"></i>
+              공장 구역 배치도 — 평면도
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">Zone을 클릭하면 상세 정보를 확인할 수 있습니다</p>
+          </div>
+          <div class="flex items-center gap-3 text-xs">
+            <span class="flex items-center gap-1.5"><span style="width:12px;height:12px;background:#1e3a5f;border:2px solid #f59e0b;display:inline-block;border-radius:2px;"></span>안전펜스 (산업용)</span>
+            <span class="flex items-center gap-1.5"><span style="width:12px;height:12px;background:rgba(30,64,175,0.3);border:1px dashed #60a5fa;display:inline-block;border-radius:2px;"></span>산업용 로봇</span>
+            <span class="flex items-center gap-1.5"><span style="width:12px;height:12px;background:rgba(5,150,105,0.25);border:1px dashed #34d399;display:inline-block;border-radius:2px;"></span>협동 로봇</span>
+            <span class="flex items-center gap-1.5"><span style="width:12px;height:12px;background:rgba(124,58,237,0.25);border:1px dashed #a78bfa;display:inline-block;border-radius:2px;"></span>하이브리드</span>
+          </div>
+        </div>
+
+        <!-- SVG 공장 평면도 -->
+        <div style="background:#111827;border-radius:10px;padding:12px;border:1px solid #374151;">
+        <svg id="factory-svg" viewBox="0 0 960 520" style="width:100%;cursor:default;" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <!-- 안전펜스 패턴 (노란색 격자) -->
+            <pattern id="fence" x="0" y="0" width="8" height="8" patternUnits="userSpaceOnUse">
+              <rect width="8" height="8" fill="#1a2535"/>
+              <line x1="0" y1="0" x2="8" y2="8" stroke="#d97706" stroke-width="0.8" opacity="0.7"/>
+              <line x1="8" y1="0" x2="0" y2="8" stroke="#d97706" stroke-width="0.8" opacity="0.7"/>
+            </pattern>
+            <!-- 컨베이어 롤러 패턴 -->
+            <pattern id="conveyor" x="0" y="0" width="14" height="14" patternUnits="userSpaceOnUse">
+              <rect width="14" height="14" fill="#1e3a5f"/>
+              <rect x="1" y="4" width="12" height="6" rx="3" fill="#2d5986" stroke="#3b82f6" stroke-width="0.5"/>
+            </pattern>
+            <!-- 화살표 마커 -->
+            <marker id="arr-blue" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+              <path d="M0,1 L7,4 L0,7 Z" fill="#60a5fa"/>
+            </marker>
+            <marker id="arr-green" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+              <path d="M0,1 L7,4 L0,7 Z" fill="#34d399"/>
+            </marker>
+            <marker id="arr-white" markerWidth="8" markerHeight="8" refX="4" refY="4" orient="auto">
+              <path d="M0,1 L7,4 L0,7 Z" fill="#94a3b8"/>
+            </marker>
+            <!-- 컨베이어 흐름 애니메이션 -->
+            <pattern id="conveyorAnim" x="0" y="0" width="20" height="10" patternUnits="userSpaceOnUse">
+              <rect width="20" height="10" fill="#1e3a5f"/>
+              <rect x="1" y="2" width="18" height="6" rx="3" fill="#2563eb" stroke="#3b82f6" stroke-width="0.5" opacity="0.7"/>
+            </pattern>
+            <!-- 글로우 필터 -->
+            <filter id="glow">
+              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+              <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+            <!-- 코봇 글로우 -->
+            <filter id="glowGreen">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+              <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
+          </defs>
+
+          <!-- ── 공장 외벽 ── -->
+          <rect x="10" y="10" width="940" height="500" rx="8" fill="#0d1b2e" stroke="#374151" stroke-width="3"/>
+          <!-- 바닥 격자 -->
+          <pattern id="floor" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+            <rect width="40" height="40" fill="none"/>
+            <path d="M40,0 L0,0 L0,40" stroke="#1e293b" stroke-width="0.5" fill="none"/>
+          </pattern>
+          <rect x="10" y="10" width="940" height="500" rx="8" fill="url(#floor)"/>
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 1 — 원료 혼합 (좌상단, 안전펜스)
+          ═══════════════════════════════════════════════ -->
+          <!-- 안전펜스 배경 -->
+          <rect x="20" y="20" width="230" height="240" rx="4" fill="url(#fence)" stroke="#f59e0b" stroke-width="2.5"/>
+          <!-- Zone 내부 -->
+          <rect id="zone1-bg" x="26" y="26" width="218" height="228" rx="3"
+                fill="rgba(30,58,138,0.25)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="6 3"
+                class="zone-clickable" style="cursor:pointer;" onclick="selectZone('zone1')"/>
+          <!-- Zone 라벨 -->
+          <text x="135" y="46" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700" font-family="Arial">Zone 1</text>
+          <text x="135" y="59" text-anchor="middle" fill="#93c5fd" font-size="9" font-family="Arial">Raw Material Mixing Area</text>
+          <text x="135" y="71" text-anchor="middle" fill="#bfdbfe" font-size="10" font-weight="600" font-family="Arial">원료 조합</text>
+          <!-- 펜스 코너 볼트 -->
+          <circle cx="20" cy="20" r="4" fill="#f59e0b"/><circle cx="250" cy="20" r="4" fill="#f59e0b"/>
+          <circle cx="20" cy="260" r="4" fill="#f59e0b"/><circle cx="250" cy="260" r="4" fill="#f59e0b"/>
+
+          <!-- 원료 드럼통 (좌측) -->
+          <g opacity="0.85">
+            <ellipse cx="52" cy="105" rx="14" ry="7" fill="#374151" stroke="#6b7280" stroke-width="1"/>
+            <rect x="38" y="105" width="28" height="45" fill="#374151" stroke="#6b7280" stroke-width="1"/>
+            <ellipse cx="52" cy="150" rx="14" ry="7" fill="#4b5563" stroke="#6b7280" stroke-width="1"/>
+
+            <ellipse cx="78" cy="105" rx="14" ry="7" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+            <rect x="64" y="105" width="28" height="45" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+            <ellipse cx="78" cy="150" rx="14" ry="7" fill="#1e40af" stroke="#3b82f6" stroke-width="1"/>
+
+            <ellipse cx="52" cy="165" rx="14" ry="7" fill="#374151" stroke="#9ca3af" stroke-width="1"/>
+            <rect x="38" y="165" width="28" height="38" fill="#374151" stroke="#9ca3af" stroke-width="1"/>
+            <ellipse cx="52" cy="203" rx="14" ry="7" fill="#4b5563" stroke="#9ca3af" stroke-width="1"/>
+
+            <ellipse cx="78" cy="165" rx="14" ry="7" fill="#374151" stroke="#9ca3af" stroke-width="1"/>
+            <rect x="64" y="165" width="28" height="38" fill="#374151" stroke="#9ca3af" stroke-width="1"/>
+            <ellipse cx="78" cy="203" rx="14" ry="7" fill="#4b5563" stroke="#9ca3af" stroke-width="1"/>
+          </g>
+
+          <!-- 산업용 로봇 (Zone 1 중앙) -->
+          <g id="robot-z1" filter="url(#glow)" onclick="selectZone('zone1')" style="cursor:pointer;">
+            <!-- 베이스 -->
+            <rect x="115" y="185" width="34" height="10" rx="2" fill="#1e40af" stroke="#60a5fa" stroke-width="1.2"/>
+            <!-- 하부 암 -->
+            <rect x="128" y="150" width="8" height="38" rx="2" fill="#2563eb" stroke="#60a5fa" stroke-width="1"/>
+            <!-- 상부 암 -->
+            <rect x="132" y="118" width="6" height="36" rx="2" fill="#3b82f6" stroke="#93c5fd" stroke-width="1"
+                  transform="rotate(-20 135 150)"/>
+            <!-- 엔드 이펙터 -->
+            <circle cx="154" cy="112" r="7" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.5"/>
+            <line x1="150" y1="108" x2="158" y2="116" stroke="#60a5fa" stroke-width="1.5"/>
+            <line x1="158" y1="108" x2="150" y2="116" stroke="#60a5fa" stroke-width="1.5"/>
+            <!-- 동작 표시 -->
+            <circle cx="135" cy="140" r="3" fill="#60a5fa" opacity="0.6">
+              <animate attributeName="opacity" values="0.6;1;0.6" dur="1.5s" repeatCount="indefinite"/>
+            </circle>
+          </g>
+
+          <!-- 혼합 탱크 A -->
+          <g opacity="0.9">
+            <ellipse cx="185" cy="108" rx="22" ry="9" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.5"/>
+            <rect x="163" y="108" width="44" height="60" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.5"/>
+            <ellipse cx="185" cy="168" rx="22" ry="9" fill="#1e40af" stroke="#60a5fa" stroke-width="1"/>
+            <!-- 탱크 내용물 -->
+            <rect x="164" y="130" width="42" height="37" fill="rgba(59,130,246,0.3)"/>
+            <!-- 교반기 -->
+            <line x1="185" y1="108" x2="185" y2="140" stroke="#93c5fd" stroke-width="1.5"/>
+            <line x1="173" y1="132" x2="197" y2="132" stroke="#93c5fd" stroke-width="2"/>
+            <text x="185" y="192" text-anchor="middle" fill="#93c5fd" font-size="8" font-family="Arial">TK-101</text>
+          </g>
+          <!-- 혼합 탱크 B (소형) -->
+          <g opacity="0.9">
+            <ellipse cx="222" cy="130" rx="16" ry="7" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1"/>
+            <rect x="206" y="130" width="32" height="45" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1"/>
+            <ellipse cx="222" cy="175" rx="16" ry="7" fill="#1e40af" stroke="#60a5fa" stroke-width="0.8"/>
+            <text x="222" y="195" text-anchor="middle" fill="#93c5fd" font-size="8" font-family="Arial">TK-102</text>
+          </g>
+          <!-- 상태 표시 -->
+          <circle cx="50" cy="235" r="5" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="62" y="239" fill="#22c55e" font-size="9" font-family="Arial" font-weight="600">가동중 · R001,R002</text>
+          <!-- PLC 링크 버튼 -->
+          <rect x="30" y="78" width="68" height="18" rx="4" fill="rgba(37,99,235,0.4)" stroke="#60a5fa" stroke-width="1"
+                style="cursor:pointer;" onclick="event.stopPropagation();window.location.href='/plc/mixing'"/>
+          <text x="64" y="91" text-anchor="middle" fill="#93c5fd" font-size="9" font-family="Arial" font-weight="700"
+                style="cursor:pointer;" onclick="event.stopPropagation();window.location.href='/plc/mixing'">⚙ PLC 상세</text>
+
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 2 — 충진 라인 (상단 중앙, 가장 긴 구역)
+          ═══════════════════════════════════════════════ -->
+          <rect x="260" y="20" width="480" height="240" rx="4" fill="rgba(30,58,138,0.18)" stroke="#3b82f6" stroke-width="1.5" stroke-dasharray="8 3"/>
+          <text x="500" y="40" text-anchor="middle" fill="#60a5fa" font-size="10" font-weight="700" font-family="Arial">Zone 2 — Main Filling Line · 충진 라인</text>
+
+          <!-- 컨베이어 벨트 메인 (상단) -->
+          <rect x="268" y="100" width="460" height="30" rx="3" fill="url(#conveyorAnim)">
+            <animateTransform attributeName="patternTransform" type="translate" values="0,0;20,0" dur="0.8s" repeatCount="indefinite"/>
+          </rect>
+          <rect x="268" y="100" width="460" height="30" rx="3" fill="none" stroke="#3b82f6" stroke-width="1.5"/>
+          <!-- 컨베이어 롤러 표시 -->
+          <line x1="268" y1="115" x2="728" y2="115" stroke="#1e3a5f" stroke-width="0.5" stroke-dasharray="10 10"/>
+
+          <!-- 제품 병들 (컨베이어 위) -->
+          <g fill="#ef4444" opacity="0.85">
+            <rect x="278" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="294" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="310" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="326" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="342" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="358" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="374" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="390" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="406" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="422" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="438" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="454" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="470" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="486" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="502" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="518" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="534" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="550" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="566" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="582" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="598" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="614" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="630" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="646" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="662" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="678" y="103" width="8" height="22" rx="4" fill="#f97316" stroke="#fdba74" stroke-width="0.5"/>
+            <rect x="694" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+            <rect x="710" y="103" width="8" height="22" rx="4" fill="#ef4444" stroke="#fca5a5" stroke-width="0.5"/>
+          </g>
+
+          <!-- 리턴 컨베이어 (하단) -->
+          <rect x="268" y="148" width="460" height="14" rx="2" fill="#0f172a" stroke="#1e3a5f" stroke-width="1" stroke-dasharray="4 4"/>
+
+          <!-- 충진 로봇 (좌측 델타) -->
+          <g id="robot-z2a" filter="url(#glow)" onclick="selectZone('zone2')" style="cursor:pointer;">
+            <rect x="280" y="165" width="32" height="8" rx="2" fill="#1e40af" stroke="#60a5fa" stroke-width="1"/>
+            <rect x="293" y="140" width="6" height="28" rx="2" fill="#2563eb" stroke="#60a5fa" stroke-width="1"/>
+            <rect x="296" y="125" width="5" height="19" rx="2" fill="#3b82f6" stroke="#93c5fd" stroke-width="1" transform="rotate(-15 298 140)"/>
+            <rect x="302" y="118" width="16" height="10" rx="2" fill="#0f172a" stroke="#60a5fa" stroke-width="1.2"/>
+            <!-- 델타 로봇 헤드 -->
+            <line x1="293" y1="138" x2="285" y2="125" stroke="#60a5fa" stroke-width="1"/>
+            <line x1="299" y1="138" x2="307" y2="125" stroke="#60a5fa" stroke-width="1"/>
+            <line x1="285" y1="125" x2="307" y2="125" stroke="#60a5fa" stroke-width="1"/>
+            <circle cx="296" cy="125" r="4" fill="#1e40af" stroke="#60a5fa" stroke-width="1"/>
+          </g>
+          <text x="296" y="220" text-anchor="middle" fill="#93c5fd" font-size="8" font-family="Arial">델타 로봇</text>
+          <text x="296" y="230" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Arial">280개/분</text>
+
+          <!-- 캡핑 로봇 (중앙 다관절) — 정비중 표시 -->
+          <g id="robot-z2b" onclick="selectZone('zone2')" style="cursor:pointer;" opacity="0.7">
+            <rect x="465" y="165" width="32" height="8" rx="2" fill="#78350f" stroke="#f59e0b" stroke-width="1.5"/>
+            <rect x="478" y="138" width="6" height="30" rx="2" fill="#92400e" stroke="#f59e0b" stroke-width="1"/>
+            <rect x="481" y="120" width="5" height="22" rx="2" fill="#b45309" stroke="#fbbf24" stroke-width="1" transform="rotate(25 483 138)"/>
+            <circle cx="493" cy="115" r="6" fill="#78350f" stroke="#f59e0b" stroke-width="1.5"/>
+          </g>
+          <!-- 정비중 경고 표시 -->
+          <rect x="448" y="205" width="62" height="22" rx="4" fill="rgba(245,158,11,0.2)" stroke="#f59e0b" stroke-width="1"/>
+          <text x="479" y="220" text-anchor="middle" fill="#fbbf24" font-size="9" font-family="Arial" font-weight="700">⚠ 정비중</text>
+
+          <!-- 캡핑 로봇 라벨 -->
+          <text x="479" y="235" text-anchor="middle" fill="#fbbf24" font-size="8" font-family="Arial">캡핑 로봇</text>
+
+          <!-- 충진 스테이션 로봇 (우측) -->
+          <g id="robot-z2c" filter="url(#glow)" onclick="selectZone('zone2')" style="cursor:pointer;">
+            <rect x="660" y="165" width="32" height="8" rx="2" fill="#1e40af" stroke="#60a5fa" stroke-width="1"/>
+            <rect x="673" y="140" width="6" height="28" rx="2" fill="#2563eb" stroke="#60a5fa" stroke-width="1"/>
+            <rect x="676" y="125" width="5" height="19" rx="2" fill="#3b82f6" stroke="#93c5fd" stroke-width="1" transform="rotate(15 678 140)"/>
+            <circle cx="682" cy="120" r="5" fill="#1e40af" stroke="#60a5fa" stroke-width="1.2"/>
+          </g>
+          <text x="676" y="220" text-anchor="middle" fill="#93c5fd" font-size="8" font-family="Arial">스카라 로봇</text>
+          <text x="676" y="230" text-anchor="middle" fill="#6b7280" font-size="7" font-family="Arial">240개/분</text>
+
+          <!-- 가동 상태 -->
+          <circle cx="270" cy="232" r="5" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="282" y="236" fill="#22c55e" font-size="9" font-family="Arial" font-weight="600">가동중 · 245개/분</text>
+          <circle cx="460" cy="232" r="5" fill="#f59e0b"/>
+          <text x="472" y="236" fill="#f59e0b" font-size="9" font-family="Arial" font-weight="600">R005 정비중</text>
+
+          <!-- Zone 2 클릭 영역 -->
+          <rect x="260" y="20" width="480" height="240" rx="4" fill="transparent" stroke="transparent"
+                style="cursor:pointer;" onclick="selectZone('zone2')"/>
+
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 3 — 라벨링 (우상단)
+          ═══════════════════════════════════════════════ -->
+          <rect x="750" y="20" width="200" height="240" rx="4" fill="rgba(5,150,105,0.15)" stroke="#34d399" stroke-width="1.5" stroke-dasharray="6 3"/>
+          <text x="850" y="40" text-anchor="middle" fill="#34d399" font-size="10" font-weight="700" font-family="Arial">Zone 3 — Labeling Area</text>
+          <text x="850" y="52" text-anchor="middle" fill="#6ee7b7" font-size="10" font-weight="600" font-family="Arial">라벨링</text>
+
+          <!-- 컨베이어 연장 (Zone 3 상단) -->
+          <rect x="755" y="100" width="100" height="30" rx="3" fill="url(#conveyorAnim)"/>
+          <rect x="755" y="100" width="100" height="30" rx="3" fill="none" stroke="#34d399" stroke-width="1"/>
+
+          <!-- 라벨링 머신 -->
+          <rect x="860" y="88" width="75" height="55" rx="4" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+          <rect x="868" y="96" width="59" height="24" rx="2" fill="#065f46" stroke="#6ee7b7" stroke-width="0.8"/>
+          <text x="897" y="112" text-anchor="middle" fill="#6ee7b7" font-size="8" font-family="Arial">라벨링 머신</text>
+          <circle cx="872" cy="130" r="4" fill="#34d399" opacity="0.8"/>
+          <circle cx="884" cy="130" r="4" fill="#34d399" opacity="0.8"/>
+
+          <!-- 협동 로봇 (Zone 3 하단부) -->
+          <g id="cobot-z3a" filter="url(#glowGreen)" onclick="selectZone('zone3')" style="cursor:pointer;">
+            <!-- 베이스 -->
+            <rect x="775" y="198" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <!-- 암 -->
+            <rect x="787" y="175" width="5" height="26" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="789" y="160" width="4" height="19" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(-20 791 175)"/>
+            <!-- 엔드 이펙터 -->
+            <circle cx="803" cy="155" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+            <line x1="799" y1="151" x2="807" y2="159" stroke="#34d399" stroke-width="1.5"/>
+            <!-- 안전 링 -->
+            <circle cx="789" cy="187" r="10" fill="none" stroke="#34d399" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5"/>
+          </g>
+          <!-- 협동 로봇 B -->
+          <g id="cobot-z3b" filter="url(#glowGreen)" onclick="selectZone('zone3')" style="cursor:pointer;">
+            <rect x="855" y="198" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="867" y="175" width="5" height="26" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="869" y="158" width="4" height="20" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(20 871 175)"/>
+            <circle cx="857" cy="153" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+            <line x1="853" y1="149" x2="861" y2="157" stroke="#34d399" stroke-width="1.5"/>
+            <circle cx="869" cy="187" r="10" fill="none" stroke="#34d399" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5"/>
+          </g>
+          <!-- 작업자 -->
+          <circle cx="920" cy="175" r="9" fill="#1e3a5f" stroke="#93c5fd" stroke-width="1.5"/>
+          <line x1="920" y1="184" x2="920" y2="210" stroke="#93c5fd" stroke-width="2"/>
+          <line x1="908" y1="193" x2="932" y2="193" stroke="#93c5fd" stroke-width="2"/>
+          <line x1="920" y1="210" x2="910" y2="228" stroke="#93c5fd" stroke-width="1.5"/>
+          <line x1="920" y1="210" x2="930" y2="228" stroke="#93c5fd" stroke-width="1.5"/>
+          <text x="920" y="240" text-anchor="middle" fill="#93c5fd" font-size="8" font-family="Arial">작업자</text>
+
+          <!-- 작업 테이블 -->
+          <rect x="760" y="158" width="145" height="35" rx="3" fill="#0f172a" stroke="#374151" stroke-width="1"/>
+
+          <!-- 가동 상태 -->
+          <circle cx="758" cy="232" r="5" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="770" y="236" fill="#22c55e" font-size="9" font-family="Arial" font-weight="600">2대 · 협동</text>
+
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 3 하단 — 라벨링 (좌하단)
+          ═══════════════════════════════════════════════ -->
+          <rect x="20" y="270" width="230" height="240" rx="4" fill="rgba(5,150,105,0.13)" stroke="#34d399" stroke-width="1.5" stroke-dasharray="6 3"/>
+          <text x="135" y="290" text-anchor="middle" fill="#34d399" font-size="10" font-weight="700" font-family="Arial">Zone 3 — Labeling Area</text>
+          <text x="135" y="302" text-anchor="middle" fill="#6ee7b7" font-size="10" font-weight="600" font-family="Arial">라벨링</text>
+
+          <!-- 소형 컨베이어 (Zone 3 하단) -->
+          <rect x="28" y="315" width="100" height="20" rx="2" fill="#1e3a5f" stroke="#374151" stroke-width="1"/>
+          <line x1="28" y1="325" x2="128" y2="325" stroke="#3b82f6" stroke-width="0.8" stroke-dasharray="8 6"/>
+
+          <!-- 협동 로봇 (좌하단 Zone 3) -->
+          <g id="cobot-z3c" filter="url(#glowGreen)" onclick="selectZone('zone3')" style="cursor:pointer;">
+            <rect x="42" y="388" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="54" y="363" width="5" height="28" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="56" y="348" width="4" height="19" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(-25 58 363)"/>
+            <circle cx="40" cy="342" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+            <line x1="36" y1="338" x2="44" y2="346" stroke="#34d399" stroke-width="1.5"/>
+            <circle cx="56" cy="376" r="12" fill="none" stroke="#34d399" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5"/>
+          </g>
+          <!-- 작업 테이블 -->
+          <rect x="30" y="348" width="140" height="35" rx="3" fill="#0f172a" stroke="#374151" stroke-width="1"/>
+          <!-- 협동 로봇 2 (우측) -->
+          <g id="cobot-z3d" filter="url(#glowGreen)" onclick="selectZone('zone3')" style="cursor:pointer;">
+            <rect x="148" y="388" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="160" y="363" width="5" height="28" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="162" y="348" width="4" height="19" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(25 164 363)"/>
+            <circle cx="176" cy="342" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+            <line x1="172" y1="338" x2="180" y2="346" stroke="#34d399" stroke-width="1.5"/>
+            <circle cx="162" cy="376" r="12" fill="none" stroke="#34d399" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5"/>
+          </g>
+          <!-- 작업자 (하단 Zone3) -->
+          <circle cx="205" cy="370" r="9" fill="#1e3a5f" stroke="#93c5fd" stroke-width="1.5"/>
+          <line x1="205" y1="379" x2="205" y2="400" stroke="#93c5fd" stroke-width="2"/>
+          <line x1="193" y1="388" x2="217" y2="388" stroke="#93c5fd" stroke-width="2"/>
+          <line x1="205" y1="400" x2="196" y2="415" stroke="#93c5fd" stroke-width="1.5"/>
+          <line x1="205" y1="400" x2="214" y2="415" stroke="#93c5fd" stroke-width="1.5"/>
+          <!-- 가동 상태 -->
+          <circle cx="28" cy="490" r="5" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="40" y="494" fill="#22c55e" font-size="9" font-family="Arial" font-weight="600">가동중 · R006,R007</text>
+
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 4 — 세트 포장 (하단 중앙 좌)
+          ═══════════════════════════════════════════════ -->
+          <rect x="260" y="270" width="240" height="240" rx="4" fill="rgba(124,58,237,0.15)" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="6 3"/>
+          <text x="380" y="290" text-anchor="middle" fill="#a78bfa" font-size="10" font-weight="700" font-family="Arial">Zone 4 — Gift Set Assembly</text>
+          <text x="380" y="302" text-anchor="middle" fill="#c4b5fd" font-size="10" font-weight="600" font-family="Arial">세트 포장</text>
+
+          <!-- 작업 테이블 (중앙) -->
+          <rect x="310" y="340" width="140" height="100" rx="4" fill="#0f172a" stroke="#4b5563" stroke-width="1.5"/>
+          <!-- 박스들 -->
+          <rect x="320" y="350" width="28" height="22" rx="2" fill="#be185d" stroke="#f9a8d4" stroke-width="0.8"/>
+          <rect x="355" y="350" width="28" height="22" rx="2" fill="#9d174d" stroke="#f9a8d4" stroke-width="0.8"/>
+          <rect x="390" y="350" width="28" height="22" rx="2" fill="#be185d" stroke="#f9a8d4" stroke-width="0.8"/>
+          <rect x="320" y="378" width="28" height="22" rx="2" fill="#9d174d" stroke="#f9a8d4" stroke-width="0.8"/>
+          <rect x="355" y="378" width="28" height="22" rx="2" fill="#be185d" stroke="#f9a8d4" stroke-width="0.8"/>
+          <rect x="390" y="378" width="28" height="22" rx="2" fill="#9d174d" stroke="#f9a8d4" stroke-width="0.8"/>
+
+          <!-- 협동 로봇 4기 (녹색, 테이블 사방 배치) -->
+          <!-- 상단 로봇 -->
+          <g filter="url(#glowGreen)" onclick="selectZone('zone4')" style="cursor:pointer;">
+            <rect x="365" y="308" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="377" y="288" width="5" height="22" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="379" y="275" width="4" height="17" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(-10 381 288)"/>
+            <circle cx="391" cy="271" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+          </g>
+          <!-- 하단 로봇 -->
+          <g filter="url(#glowGreen)" onclick="selectZone('zone4')" style="cursor:pointer;">
+            <rect x="365" y="449" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="377" y="440" width="5" height="12" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="379" y="425" width="4" height="18" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(10 381 440)"/>
+            <circle cx="386" cy="421" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+          </g>
+          <!-- 좌측 로봇 -->
+          <g filter="url(#glowGreen)" onclick="selectZone('zone4')" style="cursor:pointer;">
+            <rect x="270" y="378" width="8" height="28" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="285" y="383" width="22" height="5" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2" transform="rotate(-10 285 385)"/>
+            <rect x="300" y="380" width="8" height="8" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1"/>
+          </g>
+          <!-- 우측 로봇 -->
+          <g filter="url(#glowGreen)" onclick="selectZone('zone4')" style="cursor:pointer;">
+            <rect x="480" y="378" width="8" height="28" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="453" y="383" width="22" height="5" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2" transform="rotate(10 460 385)"/>
+            <rect x="446" y="380" width="8" height="8" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1"/>
+          </g>
+          <!-- 가동 상태 -->
+          <circle cx="268" cy="492" r="5" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="280" y="496" fill="#22c55e" font-size="9" font-family="Arial" font-weight="600">가동중 · R008</text>
+
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 5 — 품질 검사 (하단 중앙 우)
+          ═══════════════════════════════════════════════ -->
+          <rect x="510" y="270" width="220" height="240" rx="4" fill="rgba(5,150,105,0.13)" stroke="#34d399" stroke-width="1.5" stroke-dasharray="6 3"/>
+          <text x="620" y="290" text-anchor="middle" fill="#34d399" font-size="10" font-weight="700" font-family="Arial">Zone 5 — Quality Inspection</text>
+          <text x="620" y="302" text-anchor="middle" fill="#6ee7b7" font-size="10" font-weight="600" font-family="Arial">품질 검사</text>
+
+          <!-- 검사 스테이션 A -->
+          <rect x="525" y="325" width="85" height="100" rx="4" fill="#0f172a" stroke="#374151" stroke-width="1"/>
+          <!-- 비전 카메라 -->
+          <rect x="545" y="332" width="45" height="30" rx="3" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+          <rect x="553" y="336" width="29" height="22" rx="2" fill="#0f172a" stroke="#60a5fa" stroke-width="0.8"/>
+          <circle cx="567" cy="347" r="7" fill="#1e3a5f" stroke="#60a5fa" stroke-width="1.2"/>
+          <circle cx="567" cy="347" r="4" fill="#3b82f6" opacity="0.6"/>
+          <text x="567" y="376" text-anchor="middle" fill="#6b93b8" font-size="8" font-family="Arial">비전 AI</text>
+
+          <!-- 협동 로봇 (Zone 5) -->
+          <g id="cobot-z5" filter="url(#glowGreen)" onclick="selectZone('zone5')" style="cursor:pointer;">
+            <rect x="538" y="425" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="550" y="398" width="5" height="30" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <rect x="552" y="382" width="4" height="20" rx="2" fill="#10b981" stroke="#6ee7b7" stroke-width="1" transform="rotate(-15 554 398)"/>
+            <circle cx="565" cy="378" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+            <line x1="561" y1="374" x2="569" y2="382" stroke="#34d399" stroke-width="1.5"/>
+            <circle cx="552" cy="412" r="14" fill="none" stroke="#34d399" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5"/>
+          </g>
+          <text x="552" y="448" text-anchor="middle" fill="#6ee7b7" font-size="8" font-family="Arial">협동 로봇</text>
+
+          <!-- 검사 스테이션 B -->
+          <rect x="625" y="325" width="85" height="100" rx="4" fill="#0f172a" stroke="#374151" stroke-width="1"/>
+          <!-- 계측 장비 -->
+          <rect x="635" y="332" width="65" height="45" rx="3" fill="#1e3a5f" stroke="#3b82f6" stroke-width="1"/>
+          <rect x="640" y="337" width="55" height="30" rx="2" fill="#0f172a" stroke="#60a5fa" stroke-width="0.8"/>
+          <!-- 측정 화면 -->
+          <line x1="645" y1="350" x2="688" y2="350" stroke="#22c55e" stroke-width="1" stroke-dasharray="3 2"/>
+          <polyline points="645,360 655,353 665,358 675,346 685,355 690,348" stroke="#22c55e" stroke-width="1.2" fill="none"/>
+          <text x="667" y="390" text-anchor="middle" fill="#6b93b8" font-size="8" font-family="Arial">품질 측정기</text>
+          <!-- 로봇 (검사 스테이션 B) -->
+          <g onclick="selectZone('zone5')" style="cursor:pointer;">
+            <rect x="638" y="425" width="28" height="8" rx="2" fill="#065f46" stroke="#34d399" stroke-width="1.5"/>
+            <rect x="650" y="400" width="5" height="28" rx="2" fill="#059669" stroke="#34d399" stroke-width="1.2"/>
+            <circle cx="658" cy="395" r="5" fill="#064e3b" stroke="#34d399" stroke-width="1.5"/>
+            <circle cx="652" cy="412" r="14" fill="none" stroke="#34d399" stroke-width="0.8" stroke-dasharray="3 2" opacity="0.5"/>
+          </g>
+          <!-- 가동 상태 -->
+          <circle cx="518" cy="492" r="5" fill="#22c55e">
+            <animate attributeName="opacity" values="1;0.4;1" dur="2s" repeatCount="indefinite"/>
+          </circle>
+          <text x="530" y="496" fill="#22c55e" font-size="9" font-family="Arial" font-weight="600">가동중 · R009</text>
+
+
+          <!-- ═══════════════════════════════════════════════
+               ZONE 6 — 팔레타이징 (우하단, 안전펜스)
+          ═══════════════════════════════════════════════ -->
+          <!-- 안전펜스 -->
+          <rect x="740" y="270" width="210" height="240" rx="4" fill="url(#fence)" stroke="#f59e0b" stroke-width="2.5"/>
+          <rect x="746" y="276" width="198" height="228" rx="3" fill="rgba(30,58,138,0.22)" stroke="#3b82f6" stroke-width="1" stroke-dasharray="6 3"
+                style="cursor:pointer;" onclick="selectZone('zone6')"/>
+          <!-- 펜스 코너 볼트 -->
+          <circle cx="740" cy="270" r="4" fill="#f59e0b"/><circle cx="950" cy="270" r="4" fill="#f59e0b"/>
+          <circle cx="740" cy="510" r="4" fill="#f59e0b"/><circle cx="950" cy="510" r="4" fill="#f59e0b"/>
+
+          <text x="845" y="292" text-anchor="middle" fill="#f59e0b" font-size="10" font-weight="700" font-family="Arial">Zone 6</text>
+          <text x="845" y="304" text-anchor="middle" fill="#93c5fd" font-size="9" font-family="Arial">Palletizing Zone · 팔레타이징</text>
+
+          <!-- 팔레트 (목재) -->
+          <g opacity="0.9">
+            <rect x="755" y="360" width="80" height="60" rx="2" fill="#78350f" stroke="#a16207" stroke-width="1"/>
+            <line x1="755" y1="380" x2="835" y2="380" stroke="#92400e" stroke-width="1.5"/>
+            <line x1="755" y1="400" x2="835" y2="400" stroke="#92400e" stroke-width="1.5"/>
+            <line x1="775" y1="360" x2="775" y2="420" stroke="#92400e" stroke-width="1"/>
+            <line x1="795" y1="360" x2="795" y2="420" stroke="#92400e" stroke-width="1"/>
+            <line x1="815" y1="360" x2="815" y2="420" stroke="#92400e" stroke-width="1"/>
+            <!-- 박스 스택 -->
+            <rect x="758" y="330" width="74" height="32" rx="2" fill="#374151" stroke="#6b7280" stroke-width="1"/>
+            <rect x="762" y="304" width="66" height="28" rx="2" fill="#4b5563" stroke="#6b7280" stroke-width="1"/>
+            <rect x="766" y="282" width="58" height="24" rx="2" fill="#374151" stroke="#6b7280" stroke-width="1"/>
+          </g>
+
+          <!-- 팔레트 B -->
+          <g opacity="0.8">
+            <rect x="855" y="380" width="80" height="55" rx="2" fill="#78350f" stroke="#a16207" stroke-width="1"/>
+            <line x1="855" y1="397" x2="935" y2="397" stroke="#92400e" stroke-width="1.5"/>
+            <line x1="855" y1="415" x2="935" y2="415" stroke="#92400e" stroke-width="1"/>
+            <line x1="875" y1="380" x2="875" y2="435" stroke="#92400e" stroke-width="1"/>
+            <line x1="895" y1="380" x2="895" y2="435" stroke="#92400e" stroke-width="1"/>
+            <line x1="915" y1="380" x2="915" y2="435" stroke="#92400e" stroke-width="1"/>
+            <!-- 박스 스택 일부 -->
+            <rect x="858" y="355" width="74" height="28" rx="2" fill="#374151" stroke="#6b7280" stroke-width="1"/>
+          </g>
+
+          <!-- 대형 산업용 로봇 A (상단) -->
+          <g id="robot-z6a" filter="url(#glow)" onclick="selectZone('zone6')" style="cursor:pointer;">
+            <rect x="840" y="298" width="40" height="14" rx="3" fill="#1e40af" stroke="#f59e0b" stroke-width="1.5"/>
+            <rect x="855" y="262" width="10" height="38" rx="3" fill="#2563eb" stroke="#60a5fa" stroke-width="1.2"/>
+            <rect x="858" y="238" width="8" height="28" rx="2" fill="#3b82f6" stroke="#93c5fd" stroke-width="1" transform="rotate(-30 862 262)"/>
+            <rect x="870" y="222" width="8" height="22" rx="2" fill="#2563eb" stroke="#93c5fd" stroke-width="1" transform="rotate(15 874 238)"/>
+            <!-- 그리퍼 -->
+            <rect x="876" y="215" width="18" height="10" rx="2" fill="#0f172a" stroke="#f59e0b" stroke-width="1.2"/>
+            <line x1="879" y1="215" x2="879" y2="206" stroke="#f59e0b" stroke-width="1.5"/>
+            <line x1="890" y1="215" x2="890" y2="206" stroke="#f59e0b" stroke-width="1.5"/>
+          </g>
+
+          <!-- 대형 산업용 로봇 B (하단) -->
+          <g id="robot-z6b" filter="url(#glow)" onclick="selectZone('zone6')" style="cursor:pointer;">
+            <rect x="750" y="455" width="40" height="14" rx="3" fill="#1e40af" stroke="#60a5fa" stroke-width="1.5"/>
+            <rect x="765" y="428" width="10" height="30" rx="3" fill="#2563eb" stroke="#60a5fa" stroke-width="1.2"/>
+            <rect x="768" y="410" width="8" height="22" rx="2" fill="#3b82f6" stroke="#93c5fd" stroke-width="1" transform="rotate(-20 772 428)"/>
+            <rect x="778" y="396" width="8" height="20" rx="2" fill="#2563eb" stroke="#93c5fd" stroke-width="1" transform="rotate(25 782 410)"/>
+            <rect x="783" y="390" width="16" height="8" rx="2" fill="#0f172a" stroke="#60a5fa" stroke-width="1.2"/>
+          </g>
+
+          <!-- 가동 상태 -->
+          <circle cx="748" cy="492" r="5" fill="#94a3b8"/>
+          <text x="760" y="496" fill="#94a3b8" font-size="9" font-family="Arial" font-weight="600">R010 가동 · R011 대기</text>
+
+
+          <!-- ═══════════════════════════════════════════════
+               물류 흐름 화살표 (SVG 경로)
+          ═══════════════════════════════════════════════ -->
+          <!-- Zone 1 → Zone 2 (우측) -->
+          <path d="M252,135 L262,135" stroke="#60a5fa" stroke-width="2.5" marker-end="url(#arr-blue)" fill="none"/>
+          <path d="M252,135 L262,135" stroke="#60a5fa" stroke-width="5" opacity="0.15" fill="none" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" values="0;-7" dur="0.5s" repeatCount="indefinite"/>
+          </path>
+
+          <!-- Zone 2 → Zone 3 우상단 (우측) -->
+          <path d="M742,115 L752,115" stroke="#60a5fa" stroke-width="2.5" marker-end="url(#arr-blue)" fill="none"/>
+          <path d="M742,115 L752,115" stroke="#60a5fa" stroke-width="5" opacity="0.15" fill="none" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" values="0;-7" dur="0.5s" repeatCount="indefinite"/>
+          </path>
+
+          <!-- Zone 3 상단 → Zone 3 하단 (하향) -->
+          <path d="M850,262 L850,272" stroke="#34d399" stroke-width="2" marker-end="url(#arr-green)" fill="none"/>
+          <path d="M135,262 L135,268" stroke="#34d399" stroke-width="2" marker-end="url(#arr-green)" fill="none"/>
+
+          <!-- Zone 3 하단 → Zone 4 (우측) -->
+          <path d="M252,390 L262,390" stroke="#a78bfa" stroke-width="2.5" marker-end="url(#arr-blue)" fill="none"/>
+          <path d="M252,390 L262,390" stroke="#a78bfa" stroke-width="5" opacity="0.15" fill="none" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" values="0;-7" dur="0.5s" repeatCount="indefinite"/>
+          </path>
+
+          <!-- Zone 4 → Zone 5 (우측) -->
+          <path d="M502,390 L512,390" stroke="#34d399" stroke-width="2.5" marker-end="url(#arr-green)" fill="none"/>
+          <path d="M502,390 L512,390" stroke="#34d399" stroke-width="5" opacity="0.15" fill="none" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" values="0;-7" dur="0.5s" repeatCount="indefinite"/>
+          </path>
+
+          <!-- Zone 5 → Zone 6 (우측) -->
+          <path d="M732,390 L742,390" stroke="#60a5fa" stroke-width="2.5" marker-end="url(#arr-blue)" fill="none"/>
+          <path d="M732,390 L742,390" stroke="#60a5fa" stroke-width="5" opacity="0.15" fill="none" stroke-dasharray="4 3">
+            <animate attributeName="stroke-dashoffset" values="0;-7" dur="0.5s" repeatCount="indefinite"/>
+          </path>
+
+          <!-- 전체 흐름 연결 (우상→우하) Zone 3 → Zone 3 하단 이음 경로 -->
+          <path d="M850,260 Q950,265 950,390 Q950,500 730,500 Q620,505 620,500"
+                stroke="#374151" stroke-width="1.5" fill="none" stroke-dasharray="5 4" opacity="0.4"/>
+
+          <!-- 출입구 표시 -->
+          <rect x="440" y="505" width="80" height="8" rx="2" fill="#374151" stroke="#6b7280" stroke-width="1"/>
+          <text x="480" y="515" text-anchor="middle" fill="#6b7280" font-size="8" font-family="Arial">출입구</text>
+
+        </svg>
+        </div>
+        <!-- 클릭 안내 -->
+        <div id="zone-info-bar" class="mt-3 p-3 rounded-lg text-center" style="background:#1e293b;border:1px solid #334155;">
+          <span class="text-xs text-slate-400"><i class="fas fa-hand-pointer mr-1"></i>Zone을 클릭하면 상세 정보가 여기 표시됩니다</span>
+        </div>
+
+        <!-- ── 기존 그리드 완전 제거, 하단 패널만 유지 ── -->
+        <div class="hidden"><!-- 구 그리드 영역 -->
         <div class="grid grid-cols-7 gap-3 items-center">
           <!-- 원료 혼합 -->
           <div class="col-span-1 zone-card zone-industrial cursor-pointer relative" onclick="showZoneDetail('mixing')">
@@ -1925,6 +2495,8 @@ app.get('/', (c) => {
           </div>
         </div>
       </div>
+
+      </div><!-- hidden div 닫기 -->
 
       <!-- 구역 상세 정보 패널 -->
       <div id="zone-detail" class="card hidden">
@@ -2440,6 +3012,110 @@ function renderGantt() {
       </div>
     </div>
   \`).join('');
+}
+
+// ========== SVG 공장 평면도 Zone 선택 ===========
+const zoneInfoMap = {
+  zone1: {
+    id: 'zone1', label: 'Zone 1 — 원료 혼합 (Raw Material Mixing)',
+    color: '#60a5fa', border: '#1e40af',
+    robots: 'R001 원료 투입 로봇 A · R002 원료 투입 로봇 B',
+    type: '산업용 대형 로봇 (안전펜스 격리)',
+    status: '● 정상 가동', statusColor: '#22c55e',
+    speed: '180 kg/batch', uptime: '99.2%',
+    desc: '고중량 원료 드럼(20~200kg) 자동 이송·투입. 화학 원료 취급 위험구역으로 안전펜스 완전 격리, 24시간 무인 가동.',
+    plcLink: '/plc/mixing',
+  },
+  zone2: {
+    id: 'zone2', label: 'Zone 2 — 충진 라인 (Main Filling Line)',
+    color: '#60a5fa', border: '#1e40af',
+    robots: 'R003 델타 로봇 · R004 스카라 로봇 · R005 캡핑 로봇 (정비중)',
+    type: '산업용 로봇 + 자동화 설비',
+    status: '⚠ R005 정비중', statusColor: '#f59e0b',
+    speed: '245 개/분 (현재)', uptime: '97.3%',
+    desc: '분당 100~300개 고속 충진·캡핑. 델타/스카라 로봇으로 병 정렬, 다관절 로봇으로 정밀 토크 캡핑. 안전펜스 격리.',
+    plcLink: null,
+  },
+  zone3: {
+    id: 'zone3', label: 'Zone 3 — 라벨링 (Labeling Area)',
+    color: '#34d399', border: '#065f46',
+    robots: 'R006 협동 로봇 라벨링 A · R007 협동 로봇 라벨링 B',
+    type: '협동 로봇 (작업자 협업 구역)',
+    status: '● 정상 가동', statusColor: '#22c55e',
+    speed: '44 개/분 (평균)', uptime: '96.4%',
+    desc: '다양한 용기 크기·디자인에 섬세한 힘 제어로 라벨 부착. 태블릿으로 15분 내 품종 전환. 작업자 육안 검사 병행.',
+    plcLink: null,
+  },
+  zone4: {
+    id: 'zone4', label: 'Zone 4 — 세트 포장 (Gift Set Assembly)',
+    color: '#a78bfa', border: '#4c1d95',
+    robots: 'R008 협동 로봇 세트 포장 (4기)',
+    type: '협동 로봇 + 작업자 협업',
+    status: '● 정상 가동', statusColor: '#22c55e',
+    speed: '28 세트/분', uptime: '95.8%',
+    desc: '명절 선물 세트 조립. 협동 로봇 4기가 테이블을 둘러싸고 제품 배치, 작업자가 리본·메시지카드 추가. 구성 변경 용이.',
+    plcLink: null,
+  },
+  zone5: {
+    id: 'zone5', label: 'Zone 5 — 품질 검사 (Quality Inspection)',
+    color: '#34d399', border: '#065f46',
+    robots: 'R009 협동 로봇 품질 검사',
+    type: '협동 로봇 + AI 비전 시스템',
+    status: '● 정상 가동', statusColor: '#22c55e',
+    speed: '55 개/분 (전수 검사)', uptime: '97.1%',
+    desc: '협동 로봇이 제품을 비전 카메라 앞에 위치. AI가 라벨 불량·캡 결함·용기 손상 자동 감지. 불량품 작업자 전달 협업.',
+    plcLink: null,
+  },
+  zone6: {
+    id: 'zone6', label: 'Zone 6 — 팔레타이징 (Palletizing Zone)',
+    color: '#60a5fa', border: '#1e40af',
+    robots: 'R010 박스 적재 로봇 A · R011 팔레타이징 로봇 B (대기)',
+    type: '산업용 대형 로봇 (안전펜스 격리)',
+    status: '◌ R011 대기', statusColor: '#94a3b8',
+    speed: '85 박스/분', uptime: '98.4%',
+    desc: '10~20kg 완제품 박스 팔레트 자동 적재. 최적 패턴 자동 계산으로 공간 효율 최대화. 안전펜스 격리, 24시간 가동.',
+    plcLink: null,
+  },
+};
+
+function selectZone(zoneId) {
+  // SVG 하이라이트 초기화
+  document.querySelectorAll('[id^="zone"][id$="-bg"]').forEach(el => {
+    el.setAttribute('stroke-width', '1');
+    el.setAttribute('opacity', '1');
+  });
+
+  const info = zoneInfoMap[zoneId];
+  if (!info) return;
+
+  // 정보 바 업데이트
+  const bar = document.getElementById('zone-info-bar');
+  bar.innerHTML = \`
+    <div class="flex items-center gap-4 flex-wrap">
+      <div class="flex items-center gap-2">
+        <span style="width:10px;height:10px;border-radius:50%;background:\${info.statusColor};display:inline-block;box-shadow:0 0 6px \${info.statusColor};"></span>
+        <span class="font-semibold text-white text-sm">\${info.label}</span>
+      </div>
+      <span style="background:rgba(255,255,255,0.08);padding:2px 8px;border-radius:4px;font-size:12px;color:#94a3b8;">\${info.type}</span>
+      <span class="text-xs" style="color:\${info.statusColor};">\${info.status}</span>
+      <span class="text-xs text-slate-400">속도: \${info.speed}</span>
+      <span class="text-xs text-slate-400">가동률: \${info.uptime}</span>
+      \${info.plcLink ? \`<a href="\${info.plcLink}" class="ml-auto text-xs bg-blue-700/40 hover:bg-blue-700/70 text-blue-300 px-3 py-1 rounded border border-blue-600/40 transition-colors"><i class="fas fa-microchip mr-1"></i>PLC 상세 →</a>\` : ''}
+    </div>
+    <div class="text-xs text-slate-400 mt-2 text-left">\${info.desc}</div>
+    <div class="text-xs text-slate-500 mt-1 text-left"><i class="fas fa-robot mr-1"></i>\${info.robots}</div>
+  \`;
+  bar.style.background = 'rgba(30,41,59,0.9)';
+  bar.style.borderColor = info.color;
+
+  // 상세 패널도 업데이트
+  showZoneDetail(
+    zoneId === 'zone1' ? 'mixing' :
+    zoneId === 'zone2' ? 'filling' :
+    zoneId === 'zone3' ? 'labeling' :
+    zoneId === 'zone4' ? 'setpacking' :
+    zoneId === 'zone5' ? 'inspection' : 'palletizing'
+  );
 }
 
 // ========== 공장 레이아웃 ===========
