@@ -80,6 +80,1290 @@ app.get('/api/orders', (c) => {
   return c.json(orders)
 })
 
+// ============================================================
+// PLC 연동 API - 원료 혼합 구역 실시간 데이터
+// ============================================================
+
+// 실시간 PLC 센서값 시뮬레이터 (실제 환경에서는 OPC-UA / Modbus TCP로 대체)
+function simulatePLC() {
+  const now = Date.now()
+  const t = now / 1000
+
+  // 탱크별 실시간 센서값 (삼각함수로 현실적 변동 시뮬레이션)
+  const tanks = [
+    {
+      id: 'TK-101', name: '수상 믹싱 탱크 A', product: '토너 베이스', status: 'mixing',
+      capacity: 2000, current: 1580 + Math.sin(t * 0.05) * 20,
+      temp: 72.3 + Math.sin(t * 0.08) * 1.2,
+      tempSP: 72.0,
+      pressure: 1.82 + Math.sin(t * 0.12) * 0.05,
+      pressureSP: 1.80,
+      agitatorRPM: 145 + Math.sin(t * 0.1) * 3,
+      agitatorSP: 145,
+      viscosity: 380 + Math.sin(t * 0.06) * 15,
+      batchProgress: 78,
+      batchNo: 'BT-2024-0891-A',
+      recipe: 'R-TONER-WH-200',
+      elapsedMin: 94,
+      remainMin: 26,
+      plcAddr: 'DB1.DBW0',
+    },
+    {
+      id: 'TK-102', name: '수상 믹싱 탱크 B', product: '로션 베이스', status: 'heating',
+      capacity: 2000, current: 820 + Math.sin(t * 0.04) * 10,
+      temp: 58.7 + Math.sin(t * 0.09) * 0.8,
+      tempSP: 75.0,
+      pressure: 1.21 + Math.sin(t * 0.07) * 0.03,
+      pressureSP: 1.20,
+      agitatorRPM: 80 + Math.sin(t * 0.11) * 2,
+      agitatorSP: 80,
+      viscosity: 0,
+      batchProgress: 41,
+      batchNo: 'BT-2024-0892-A',
+      recipe: 'R-LOTION-MO-150',
+      elapsedMin: 49,
+      remainMin: 71,
+      plcAddr: 'DB1.DBW10',
+    },
+    {
+      id: 'TK-201', name: '유상 믹싱 탱크 A', product: '크림 오일상', status: 'complete',
+      capacity: 1000, current: 945 + Math.sin(t * 0.03) * 5,
+      temp: 80.1 + Math.sin(t * 0.06) * 0.5,
+      tempSP: 80.0,
+      pressure: 2.01 + Math.sin(t * 0.08) * 0.02,
+      pressureSP: 2.00,
+      agitatorRPM: 60 + Math.sin(t * 0.09) * 1,
+      agitatorSP: 60,
+      viscosity: 8500 + Math.sin(t * 0.05) * 200,
+      batchProgress: 100,
+      batchNo: 'BT-2024-0893-A',
+      recipe: 'R-CREAM-AA-50',
+      elapsedMin: 120,
+      remainMin: 0,
+      plcAddr: 'DB2.DBW0',
+    },
+    {
+      id: 'TK-202', name: '유상 믹싱 탱크 B', product: '—', status: 'idle',
+      capacity: 1000, current: 0,
+      temp: 24.5 + Math.sin(t * 0.02) * 0.3,
+      tempSP: 0,
+      pressure: 0.00,
+      pressureSP: 0,
+      agitatorRPM: 0,
+      agitatorSP: 0,
+      viscosity: 0,
+      batchProgress: 0,
+      batchNo: '—',
+      recipe: '—',
+      elapsedMin: 0,
+      remainMin: 0,
+      plcAddr: 'DB2.DBW10',
+    },
+    {
+      id: 'TK-301', name: '균질화 탱크 (호모믹서)', product: '에멀전 믹싱', status: 'mixing',
+      capacity: 3000, current: 2780 + Math.sin(t * 0.06) * 30,
+      temp: 65.8 + Math.sin(t * 0.07) * 0.9,
+      tempSP: 65.0,
+      pressure: 2.45 + Math.sin(t * 0.1) * 0.08,
+      pressureSP: 2.40,
+      agitatorRPM: 3200 + Math.sin(t * 0.15) * 50,
+      agitatorSP: 3200,
+      viscosity: 12400 + Math.sin(t * 0.05) * 350,
+      batchProgress: 62,
+      batchNo: 'BT-2024-0890-F',
+      recipe: 'R-EMULSION-BASE',
+      elapsedMin: 74,
+      remainMin: 46,
+      plcAddr: 'DB3.DBW0',
+    },
+  ]
+
+  // 원료 공급 밸브 상태
+  const valves = [
+    { id: 'V-101', name: '정제수 공급', tag: 'FV-101', status: 'open', flow: 42.3 + Math.sin(t * 0.1) * 1.2, flowSP: 42.0, unit: 'L/min', plcAddr: 'DB10.DBX0.0' },
+    { id: 'V-102', name: '글리세린 공급', tag: 'FV-102', status: 'open', flow: 8.7 + Math.sin(t * 0.08) * 0.3, flowSP: 8.5, unit: 'L/min', plcAddr: 'DB10.DBX0.1' },
+    { id: 'V-103', name: '히알루론산 투입', tag: 'FV-103', status: 'closed', flow: 0, flowSP: 0, unit: 'L/min', plcAddr: 'DB10.DBX0.2' },
+    { id: 'V-104', name: '방부제 계량', tag: 'FV-104', status: 'open', flow: 0.32 + Math.sin(t * 0.05) * 0.01, flowSP: 0.30, unit: 'L/min', plcAddr: 'DB10.DBX0.3' },
+    { id: 'V-105', name: '향료 투입', tag: 'FV-105', status: 'closed', flow: 0, flowSP: 0, unit: 'L/min', plcAddr: 'DB10.DBX0.4' },
+    { id: 'V-201', name: '스팀 공급', tag: 'TV-201', status: 'open', flow: 18.5 + Math.sin(t * 0.12) * 0.8, flowSP: 18.0, unit: 'kg/hr', plcAddr: 'DB10.DBX1.0' },
+    { id: 'V-202', name: '냉각수 공급', tag: 'CV-202', status: 'closed', flow: 0, flowSP: 0, unit: 'L/min', plcAddr: 'DB10.DBX1.1' },
+  ]
+
+  // PLC 인터락 및 알람
+  const interlocks = [
+    { id: 'IL-001', tag: 'TIC-101', desc: 'TK-101 온도 상한 인터락', status: 'normal', value: 72.3, limit: 85.0, unit: '°C' },
+    { id: 'IL-002', tag: 'PIC-101', desc: 'TK-101 압력 상한 인터락', status: 'normal', value: 1.82, limit: 3.50, unit: 'bar' },
+    { id: 'IL-003', tag: 'TIC-301', desc: '호모믹서 과열 방지', status: 'normal', value: 65.8, limit: 80.0, unit: '°C' },
+    { id: 'IL-004', tag: 'AIC-101', desc: '교반기 과전류 보호', status: 'warning', value: 38.2, limit: 40.0, unit: 'A' },
+    { id: 'IL-005', tag: 'LIC-301', desc: 'TK-301 하한 레벨 인터락', status: 'normal', value: 92.7, limit: 20.0, unit: '%' },
+  ]
+
+  // 배치 원료 투입 이력 (현재 진행중인 배치)
+  const ingredients = [
+    { seq: 1, name: '정제수 (Purified Water)', amount: 1200.0, actual: 1200.0, unit: 'kg', status: 'done', time: '08:12', robot: 'R001' },
+    { seq: 2, name: '부틸렌글라이콜', amount: 80.0, actual: 80.2, unit: 'kg', status: 'done', time: '08:38', robot: 'R001' },
+    { seq: 3, name: '글리세린', amount: 50.0, actual: 49.8, unit: 'kg', status: 'done', time: '08:51', robot: 'R002' },
+    { seq: 4, name: '나이아신아마이드', amount: 32.0, actual: 32.1, unit: 'kg', status: 'done', time: '09:04', robot: 'R002' },
+    { seq: 5, name: '히알루론산 (1%aq)', amount: 100.0, actual: 100.0, unit: 'kg', status: 'done', time: '09:22', robot: 'R001' },
+    { seq: 6, name: '판테놀', amount: 10.0, actual: 10.0, unit: 'kg', status: 'doing', time: '진행중', robot: 'R001' },
+    { seq: 7, name: '알란토인', amount: 5.0, actual: 0, unit: 'kg', status: 'pending', time: '—', robot: 'R002' },
+    { seq: 8, name: '방부제 (페녹시에탄올)', amount: 8.0, actual: 0, unit: 'kg', status: 'pending', time: '—', robot: 'R002' },
+    { seq: 9, name: '향료', amount: 3.0, actual: 0, unit: 'kg', status: 'pending', time: '—', robot: 'R002' },
+    { seq: 10, name: '구연산 (pH 조정)', amount: 2.0, actual: 0, unit: 'kg', status: 'pending', time: '—', robot: 'R001' },
+  ]
+
+  // 트렌드 히스토리 (최근 60분, 1분 간격)
+  const trendHistory = Array.from({ length: 60 }, (_, i) => {
+    const minAgo = 60 - i
+    const tBase = t - minAgo * 60
+    return {
+      label: `${String(Math.floor((new Date().getHours() * 60 + new Date().getMinutes() - minAgo + 1440) % 1440 / 60)).padStart(2,'0')}:${String(((new Date().getMinutes() - minAgo) % 60 + 60) % 60).padStart(2,'0')}`,
+      temp101: parseFloat((72.3 + Math.sin(tBase * 0.08) * 1.2 + (i < 20 ? (i - 20) * 0.3 : 0)).toFixed(1)),
+      pressure101: parseFloat((1.82 + Math.sin(tBase * 0.12) * 0.05).toFixed(3)),
+      rpm101: parseFloat((145 + Math.sin(tBase * 0.1) * 3).toFixed(0)),
+      temp301: parseFloat((65.8 + Math.sin(tBase * 0.07) * 0.9).toFixed(1)),
+      rpm301: parseFloat((3200 + Math.sin(tBase * 0.15) * 50).toFixed(0)),
+    }
+  })
+
+  return { tanks, valves, interlocks, ingredients, trendHistory, ts: new Date().toISOString() }
+}
+
+// PLC 실시간 데이터 API
+app.get('/api/plc/mixing', (c) => {
+  return c.json(simulatePLC())
+})
+
+// PLC 탱크별 상세
+app.get('/api/plc/mixing/:tankId', (c) => {
+  const data = simulatePLC()
+  const tank = data.tanks.find(t => t.id === c.req.param('tankId'))
+  if (!tank) return c.json({ error: 'Tank not found' }, 404)
+  return c.json({ tank, trendHistory: data.trendHistory, ts: data.ts })
+})
+
+// 레시피 목록 API
+app.get('/api/recipes', (c) => {
+  const recipes = [
+    { id: 'R-TONER-WH-200', name: '화이트닝 토너 200ml', version: 'v3.2', lastUpdated: '2024-08-15', steps: 8, totalTime: 120, status: 'active' },
+    { id: 'R-LOTION-MO-150', name: '모이스처 로션 150ml', version: 'v2.8', lastUpdated: '2024-07-22', steps: 10, totalTime: 150, status: 'active' },
+    { id: 'R-CREAM-AA-50', name: '안티에이징 크림 50ml', version: 'v4.1', lastUpdated: '2024-09-01', steps: 12, totalTime: 180, status: 'active' },
+    { id: 'R-EMULSION-BASE', name: '에멀전 베이스 (공용)', version: 'v1.5', lastUpdated: '2024-06-10', steps: 9, totalTime: 130, status: 'active' },
+    { id: 'R-SERUM-VC-30', name: '비타민C 세럼 30ml', version: 'v2.1', lastUpdated: '2024-08-28', steps: 11, totalTime: 140, status: 'review' },
+  ]
+  return c.json(recipes)
+})
+
+// ============================================================
+// PLC 원료 혼합 상세 페이지 라우트
+// ============================================================
+app.get('/plc/mixing', (c) => {
+  return c.html(`<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PLC 연동 - 원료 혼합 구역 | CosmoFactory MES</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap');
+    * { font-family: 'Noto Sans KR', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    :root {
+      --bg: #060d1a;
+      --surface: #0d1b2e;
+      --surface2: #112236;
+      --surface3: #17304a;
+      --border: #1e4060;
+      --border2: #2a5580;
+      --text: #c8dff5;
+      --text-muted: #6b93b8;
+      --accent: #00d4ff;
+      --accent2: #00ff9d;
+      --warn: #ffb300;
+      --danger: #ff3d5a;
+      --running: #00ff9d;
+      --heating: #ff8c00;
+    }
+
+    body { background: var(--bg); color: var(--text); }
+
+    /* 스캔라인 효과 */
+    body::before {
+      content: '';
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,212,255,0.015) 2px, rgba(0,212,255,0.015) 4px);
+      pointer-events: none; z-index: 0;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px; padding: 16px;
+      position: relative; z-index: 1;
+    }
+    .card::before {
+      content: ''; position: absolute;
+      top: 0; left: 0; right: 0; height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0.3;
+    }
+    .card-sm {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px; padding: 12px;
+    }
+
+    /* SCADA 탱크 SVG 스타일 */
+    .tank-svg { filter: drop-shadow(0 0 8px rgba(0,212,255,0.3)); }
+    .tank-body { fill: var(--surface2); stroke: var(--border2); stroke-width: 2; }
+    .tank-liquid-ok { fill: url(#liquidGrad); }
+    .tank-liquid-warn { fill: rgba(255,140,0,0.6); }
+    .tank-shell { fill: none; stroke: var(--accent); stroke-width: 1; opacity: 0.4; }
+
+    /* 수치 표시 */
+    .pv-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28px; font-weight: 600;
+      color: var(--accent);
+      text-shadow: 0 0 12px rgba(0,212,255,0.6);
+    }
+    .pv-unit { font-size: 13px; color: var(--text-muted); margin-left: 4px; }
+    .sp-value {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px; color: var(--text-muted);
+    }
+    .deviation-ok { color: var(--accent2); font-size: 11px; }
+    .deviation-warn { color: var(--warn); font-size: 11px; }
+    .deviation-alarm { color: var(--danger); font-size: 11px; }
+
+    /* 게이지 */
+    .gauge-bar {
+      height: 8px; border-radius: 4px;
+      background: var(--surface3);
+      overflow: hidden; position: relative;
+    }
+    .gauge-fill {
+      height: 100%; border-radius: 4px;
+      transition: width 0.8s ease;
+    }
+    .gauge-ok { background: linear-gradient(90deg, #00a86b, #00ff9d); }
+    .gauge-warn { background: linear-gradient(90deg, #cc7700, #ffb300); }
+    .gauge-high { background: linear-gradient(90deg, #cc2233, #ff3d5a); }
+
+    /* 밸브 표시 */
+    .valve-open {
+      background: rgba(0,255,157,0.1);
+      border: 1px solid rgba(0,255,157,0.4);
+      border-radius: 6px;
+    }
+    .valve-closed {
+      background: rgba(107,147,184,0.08);
+      border: 1px solid rgba(107,147,184,0.2);
+      border-radius: 6px;
+    }
+    .valve-dot-open { background: #00ff9d; box-shadow: 0 0 6px #00ff9d; }
+    .valve-dot-closed { background: #6b93b8; }
+
+    /* 인터락 */
+    .interlock-normal {
+      background: rgba(0,168,107,0.08);
+      border: 1px solid rgba(0,255,157,0.15);
+      border-radius: 6px;
+    }
+    .interlock-warning {
+      background: rgba(255,179,0,0.1);
+      border: 1px solid rgba(255,179,0,0.4);
+      border-radius: 6px;
+      animation: borderPulse 1.5s infinite;
+    }
+    .interlock-alarm {
+      background: rgba(255,61,90,0.1);
+      border: 1px solid rgba(255,61,90,0.5);
+      border-radius: 6px;
+    }
+    @keyframes borderPulse {
+      0%,100% { border-color: rgba(255,179,0,0.4); }
+      50% { border-color: rgba(255,179,0,0.9); }
+    }
+
+    /* 탱크 상태 배지 */
+    .badge-mixing { background: rgba(0,212,255,0.15); color: var(--accent); border: 1px solid rgba(0,212,255,0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; }
+    .badge-heating { background: rgba(255,140,0,0.15); color: #ffb347; border: 1px solid rgba(255,140,0,0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .badge-complete { background: rgba(0,255,157,0.15); color: var(--accent2); border: 1px solid rgba(0,255,157,0.3); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+    .badge-idle { background: rgba(107,147,184,0.1); color: var(--text-muted); border: 1px solid rgba(107,147,184,0.2); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; }
+
+    /* 원료 투입 단계 */
+    .step-done { border-left: 3px solid var(--accent2); background: rgba(0,255,157,0.04); }
+    .step-doing { border-left: 3px solid var(--accent); background: rgba(0,212,255,0.07); animation: stepPulse 2s infinite; }
+    .step-pending { border-left: 3px solid var(--border2); background: transparent; opacity: 0.55; }
+    @keyframes stepPulse { 0%,100%{background:rgba(0,212,255,0.07)} 50%{background:rgba(0,212,255,0.14)} }
+
+    /* 탭 */
+    .plc-tab { padding: 7px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--text-muted); border: 1px solid transparent; transition: all 0.2s; }
+    .plc-tab.active { background: rgba(0,212,255,0.12); color: var(--accent); border-color: rgba(0,212,255,0.3); }
+    .plc-tab:hover:not(.active) { color: var(--text); border-color: var(--border2); }
+
+    /* PLC 연결 상태 바 */
+    .comm-ok { color: var(--accent2); }
+    .comm-badge { background: rgba(0,255,157,0.1); border: 1px solid rgba(0,255,157,0.3); padding: 3px 10px; border-radius: 4px; font-size: 11px; color: var(--accent2); font-weight: 600; }
+
+    /* 플로우 라인 애니메이션 */
+    .flow-anim { stroke-dasharray: 6 4; animation: flowMove 1.2s linear infinite; }
+    @keyframes flowMove { to { stroke-dashoffset: -10; } }
+
+    /* 선택된 탱크 하이라이트 */
+    .tank-card { cursor: pointer; transition: all 0.2s; }
+    .tank-card:hover { border-color: rgba(0,212,255,0.5); }
+    .tank-card.selected { border-color: var(--accent) !important; box-shadow: 0 0 16px rgba(0,212,255,0.2); }
+
+    .blink { animation: blink 1s step-end infinite; }
+    @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* 스크롤바 */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: var(--surface); }
+    ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<!-- 상단 헤더 -->
+<div style="background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;">
+  <div class="flex items-center justify-between px-5 py-3">
+    <div class="flex items-center gap-4">
+      <a href="/" class="flex items-center gap-2 text-slate-400 hover:text-sky-400 transition-colors text-sm">
+        <i class="fas fa-arrow-left"></i>
+        <span>MES 대시보드</span>
+      </a>
+      <div style="width:1px;height:20px;background:var(--border)"></div>
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded" style="background:rgba(0,212,255,0.15);border:1px solid rgba(0,212,255,0.3);display:flex;align-items:center;justify-content:center;">
+          <i class="fas fa-flask" style="color:var(--accent);font-size:14px;"></i>
+        </div>
+        <div>
+          <div class="text-white font-semibold text-sm">원료 혼합 구역 (Zone A)</div>
+          <div class="mono text-xs" style="color:var(--text-muted);">PLC: SIEMENS S7-1500 · OPC-UA · DB1~DB10</div>
+        </div>
+      </div>
+    </div>
+    <div class="flex items-center gap-3">
+      <!-- PLC 통신 상태 -->
+      <div class="comm-badge flex items-center gap-2">
+        <span style="width:7px;height:7px;border-radius:50%;background:var(--accent2);display:inline-block;box-shadow:0 0 6px var(--accent2);" class="blink"></span>
+        PLC 연결됨 · Cycle 12ms
+      </div>
+      <div class="mono text-xs" style="color:var(--text-muted);" id="plc-ts">—</div>
+      <button onclick="loadAll()" style="background:rgba(0,212,255,0.12);border:1px solid rgba(0,212,255,0.3);color:var(--accent);padding:5px 14px;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer;">
+        <i class="fas fa-sync-alt mr-1"></i> 갱신
+      </button>
+    </div>
+  </div>
+  <!-- 탭 -->
+  <div class="flex items-center gap-2 px-5 pb-3">
+    <button class="plc-tab active" onclick="switchTab('overview',this)">전체 현황</button>
+    <button class="plc-tab" onclick="switchTab('trend',this)">트렌드 차트</button>
+    <button class="plc-tab" onclick="switchTab('ingredients',this)">원료 투입 이력</button>
+    <button class="plc-tab" onclick="switchTab('valves',this)">밸브 / 유량</button>
+    <button class="plc-tab" onclick="switchTab('interlocks',this)">인터락 / 알람</button>
+    <button class="plc-tab" onclick="switchTab('recipes',this)">배치 레시피</button>
+  </div>
+</div>
+
+<div class="p-5">
+
+  <!-- ===== 탭: 전체 현황 ===== -->
+  <div id="tab-overview" class="section active">
+
+    <!-- 요약 KPI -->
+    <div class="grid grid-cols-5 gap-3 mb-5">
+      <div class="card-sm text-center">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">가동 탱크</div>
+        <div class="mono text-2xl font-bold" style="color:var(--accent)" id="kpi-active-tanks">—</div>
+        <div class="text-xs" style="color:var(--text-muted)">/ 5기</div>
+      </div>
+      <div class="card-sm text-center">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">진행중 배치</div>
+        <div class="mono text-2xl font-bold" style="color:var(--accent2)" id="kpi-batches">—</div>
+        <div class="text-xs" style="color:var(--text-muted)">건</div>
+      </div>
+      <div class="card-sm text-center">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">인터락 경고</div>
+        <div class="mono text-2xl font-bold" style="color:var(--warn)" id="kpi-interlocks">—</div>
+        <div class="text-xs" style="color:var(--text-muted)">건</div>
+      </div>
+      <div class="card-sm text-center">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">개방 밸브</div>
+        <div class="mono text-2xl font-bold" style="color:var(--accent)" id="kpi-valves">—</div>
+        <div class="text-xs" style="color:var(--text-muted)">개</div>
+      </div>
+      <div class="card-sm text-center">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">오늘 배치 완료</div>
+        <div class="mono text-2xl font-bold text-white">8</div>
+        <div class="text-xs" style="color:var(--accent2)">배치</div>
+      </div>
+    </div>
+
+    <!-- 탱크 카드 그리드 -->
+    <div class="grid grid-cols-5 gap-3 mb-5" id="tank-grid"></div>
+
+    <!-- 선택된 탱크 상세 -->
+    <div id="tank-detail-panel" class="card hidden">
+      <div id="tank-detail-content"></div>
+    </div>
+
+    <!-- 공정 흐름도 (P&ID 간략) -->
+    <div class="card mt-4">
+      <div class="flex items-center justify-between mb-3">
+        <h3 class="font-semibold text-sm" style="color:var(--accent)">
+          <i class="fas fa-project-diagram mr-2"></i>P&ID 흐름도 — 수상·유상 혼합 공정
+        </h3>
+        <span class="mono text-xs" style="color:var(--text-muted)">Zone A · 실시간 연동</span>
+      </div>
+      <svg viewBox="0 0 900 220" class="w-full" style="max-height:220px;">
+        <defs>
+          <linearGradient id="liquidGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#00d4ff" stop-opacity="0.7"/>
+            <stop offset="100%" stop-color="#0066aa" stop-opacity="0.5"/>
+          </linearGradient>
+          <marker id="arrowBlue" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#00d4ff" opacity="0.8"/>
+          </marker>
+          <marker id="arrowGreen" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+            <path d="M0,0 L6,3 L0,6 Z" fill="#00ff9d" opacity="0.8"/>
+          </marker>
+        </defs>
+        <!-- 배경 -->
+        <rect width="900" height="220" fill="var(--surface2)" rx="6"/>
+
+        <!-- 정제수 공급 -->
+        <rect x="10" y="10" width="80" height="36" rx="4" fill="var(--surface3)" stroke="#2a5580" stroke-width="1"/>
+        <text x="50" y="25" fill="#6b93b8" font-size="9" text-anchor="middle">정제수 공급</text>
+        <text x="50" y="38" fill="#00d4ff" font-size="10" text-anchor="middle" font-weight="bold">FV-101</text>
+
+        <!-- 정제수 → TK-101 -->
+        <line x1="90" y1="28" x2="148" y2="28" stroke="#00d4ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+        <line x1="90" y1="28" x2="148" y2="28" stroke="#00d4ff" stroke-width="3" opacity="0.15" class="flow-anim" stroke-dasharray="6 4"/>
+
+        <!-- TK-101 수상 -->
+        <rect x="150" y="10" width="110" height="90" rx="6" fill="var(--surface3)" stroke="#2a5580" stroke-width="1.5"/>
+        <rect x="155" y="55" width="100" height="40" rx="2" fill="url(#liquidGrad)" id="pid-tk101-liquid"/>
+        <text x="205" y="30" fill="#00d4ff" font-size="11" text-anchor="middle" font-weight="bold">TK-101</text>
+        <text x="205" y="45" fill="#6b93b8" font-size="9" text-anchor="middle">수상 믹싱 A</text>
+        <text x="205" y="85" fill="#c8dff5" font-size="10" text-anchor="middle" id="pid-tk101-temp">72.3°C</text>
+        <text x="205" y="97" fill="#6b93b8" font-size="8" text-anchor="middle" id="pid-tk101-rpm">145 RPM</text>
+        <!-- 교반기 아이콘 -->
+        <line x1="205" y1="55" x2="205" y2="40" stroke="#00d4ff" stroke-width="1" opacity="0.5"/>
+        <ellipse cx="205" cy="54" rx="10" ry="3" fill="none" stroke="#00d4ff" stroke-width="1" opacity="0.5"/>
+
+        <!-- TK-102 수상 -->
+        <rect x="280" y="10" width="110" height="90" rx="6" fill="var(--surface3)" stroke="#2a5580" stroke-width="1.5"/>
+        <rect x="285" y="60" width="100" height="35" rx="2" fill="rgba(255,140,0,0.4)" id="pid-tk102-liquid"/>
+        <text x="335" y="30" fill="#ffb347" font-size="11" text-anchor="middle" font-weight="bold">TK-102</text>
+        <text x="335" y="45" fill="#6b93b8" font-size="9" text-anchor="middle">수상 믹싱 B</text>
+        <text x="335" y="82" fill="#c8dff5" font-size="10" text-anchor="middle" id="pid-tk102-temp">58.7°C</text>
+        <text x="335" y="94" fill="#ffb347" font-size="8" text-anchor="middle">가열중</text>
+
+        <!-- TK-101 → 호모믹서 -->
+        <line x1="260" y1="60" x2="420" y2="60" stroke="#00d4ff" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+        <line x1="260" y1="60" x2="420" y2="60" stroke="#00d4ff" stroke-width="3" opacity="0.15" class="flow-anim"/>
+        <!-- 밸브 표시 -->
+        <polygon points="290,54 310,60 290,66" fill="#00d4ff" opacity="0.5"/>
+        <polygon points="310,54 290,60 310,66" fill="#00d4ff" opacity="0.5"/>
+        <text x="300" y="50" fill="#00d4ff" font-size="7" text-anchor="middle">TV-301</text>
+
+        <!-- TK-201 유상 -->
+        <rect x="150" y="120" width="110" height="80" rx="6" fill="var(--surface3)" stroke="#2a5580" stroke-width="1.5"/>
+        <rect x="155" y="160" width="100" height="35" rx="2" fill="rgba(255,100,0,0.3)"/>
+        <text x="205" y="140" fill="#ff8c42" font-size="11" text-anchor="middle" font-weight="bold">TK-201</text>
+        <text x="205" y="155" fill="#6b93b8" font-size="9" text-anchor="middle">유상 믹싱 A</text>
+        <text x="205" y="178" fill="#c8dff5" font-size="10" text-anchor="middle" id="pid-tk201-temp">80.1°C</text>
+        <text x="205" y="190" fill="#00ff9d" font-size="8" text-anchor="middle">완료</text>
+
+        <!-- TK-201 → 호모믹서 -->
+        <line x1="260" y1="160" x2="440" y2="140" stroke="#ff8c42" stroke-width="1.5" marker-end="url(#arrowBlue)"/>
+        <line x1="260" y1="160" x2="440" y2="140" stroke="#ff8c42" stroke-width="3" opacity="0.15" class="flow-anim"/>
+
+        <!-- 호모믹서 TK-301 -->
+        <rect x="420" y="20" width="130" height="170" rx="8" fill="var(--surface3)" stroke="#00d4ff" stroke-width="1.5"/>
+        <rect x="428" y="100" width="114" height="85" rx="3" fill="url(#liquidGrad)" opacity="0.8"/>
+        <text x="485" y="42" fill="#00d4ff" font-size="12" text-anchor="middle" font-weight="bold">TK-301</text>
+        <text x="485" y="57" fill="#6b93b8" font-size="9" text-anchor="middle">균질화 탱크</text>
+        <text x="485" y="72" fill="#c8dff5" font-size="9" text-anchor="middle">(호모믹서)</text>
+        <!-- 고속 교반기 -->
+        <line x1="485" y1="98" x2="485" y2="78" stroke="#00d4ff" stroke-width="2" opacity="0.7"/>
+        <ellipse cx="485" cy="100" rx="16" ry="4" fill="none" stroke="#00d4ff" stroke-width="1.5" opacity="0.7"/>
+        <ellipse cx="485" cy="100" rx="8" ry="2" fill="#00d4ff" opacity="0.3"/>
+        <text x="485" y="155" fill="#c8dff5" font-size="11" text-anchor="middle" id="pid-tk301-temp">65.8°C</text>
+        <text x="485" y="170" fill="#00d4ff" font-size="10" text-anchor="middle" id="pid-tk301-rpm">3200 RPM</text>
+        <text x="485" y="182" fill="#6b93b8" font-size="8" text-anchor="middle">점도: 12,400 cP</text>
+
+        <!-- 배치 진행률 바 -->
+        <rect x="428" y="188" width="114" height="6" rx="3" fill="var(--surface)"/>
+        <rect x="428" y="188" width="71" height="6" rx="3" fill="#00d4ff" opacity="0.8" id="pid-tk301-prog"/>
+        <text x="485" y="205" fill="#00d4ff" font-size="8" text-anchor="middle">62% 진행</text>
+
+        <!-- TK-301 → 충진 라인 -->
+        <line x1="550" y1="110" x2="670" y2="110" stroke="#00ff9d" stroke-width="2" marker-end="url(#arrowGreen)"/>
+        <line x1="550" y1="110" x2="670" y2="110" stroke="#00ff9d" stroke-width="4" opacity="0.1" class="flow-anim"/>
+        <text x="610" y="105" fill="#6b93b8" font-size="8" text-anchor="middle">이송 펌프</text>
+        <text x="610" y="116" fill="#00ff9d" font-size="8" text-anchor="middle">P-301</text>
+
+        <!-- 충진 라인 박스 -->
+        <rect x="670" y="80" width="100" height="60" rx="6" fill="rgba(0,168,107,0.1)" stroke="rgba(0,255,157,0.3)" stroke-width="1.5"/>
+        <text x="720" y="105" fill="#00ff9d" font-size="10" text-anchor="middle" font-weight="bold">충진 라인</text>
+        <text x="720" y="120" fill="#6b93b8" font-size="8" text-anchor="middle">Zone B</text>
+        <text x="720" y="133" fill="#c8dff5" font-size="9" text-anchor="middle">245 개/분</text>
+
+        <!-- 스팀 공급 -->
+        <rect x="800" y="10" width="85" height="36" rx="4" fill="var(--surface3)" stroke="#2a5580" stroke-width="1"/>
+        <text x="842" y="25" fill="#6b93b8" font-size="9" text-anchor="middle">스팀 공급</text>
+        <text x="842" y="38" fill="#ffb347" font-size="10" text-anchor="middle" font-weight="bold">TV-201</text>
+        <line x1="800" y1="28" x2="560" y2="80" stroke="#ffb347" stroke-width="1" stroke-dasharray="4 3" opacity="0.5"/>
+
+        <!-- 범례 -->
+        <line x1="10" y1="210" x2="35" y2="210" stroke="#00d4ff" stroke-width="1.5"/>
+        <text x="40" y="213" fill="#6b93b8" font-size="8">수상 흐름</text>
+        <line x1="90" y1="210" x2="115" y2="210" stroke="#ff8c42" stroke-width="1.5"/>
+        <text x="120" y="213" fill="#6b93b8" font-size="8">유상 흐름</text>
+        <line x1="170" y1="210" x2="195" y2="210" stroke="#00ff9d" stroke-width="1.5"/>
+        <text x="200" y="213" fill="#6b93b8" font-size="8">완제 반제품</text>
+        <line x1="250" y1="210" x2="275" y2="210" stroke="#ffb347" stroke-width="1" stroke-dasharray="4 3"/>
+        <text x="280" y="213" fill="#6b93b8" font-size="8">스팀/유틸리티</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- ===== 탭: 트렌드 차트 ===== -->
+  <div id="tab-trend" class="section">
+    <div class="grid grid-cols-2 gap-4 mb-4">
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-sm" style="color:var(--accent)">TK-101 온도 트렌드</h3>
+            <div class="mono text-xs" style="color:var(--text-muted)">Tag: TIC-101 · SP: 72.0°C</div>
+          </div>
+          <div class="mono text-xs" style="color:var(--accent2)" id="trend-tk101-temp-now">—</div>
+        </div>
+        <canvas id="chart-temp101" height="130"></canvas>
+      </div>
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-sm" style="color:var(--accent)">TK-101 압력 트렌드</h3>
+            <div class="mono text-xs" style="color:var(--text-muted)">Tag: PIC-101 · SP: 1.80 bar</div>
+          </div>
+          <div class="mono text-xs" style="color:var(--accent2)" id="trend-tk101-pres-now">—</div>
+        </div>
+        <canvas id="chart-pres101" height="130"></canvas>
+      </div>
+    </div>
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-sm" style="color:var(--accent)">TK-101 교반 속도 트렌드</h3>
+            <div class="mono text-xs" style="color:var(--text-muted)">Tag: SIC-101 · SP: 145 RPM</div>
+          </div>
+          <div class="mono text-xs" style="color:var(--accent2)" id="trend-tk101-rpm-now">—</div>
+        </div>
+        <canvas id="chart-rpm101" height="130"></canvas>
+      </div>
+      <div class="card">
+        <div class="flex items-center justify-between mb-3">
+          <div>
+            <h3 class="font-semibold text-sm" style="color:var(--accent)">TK-301 (호모믹서) 온도 + RPM</h3>
+            <div class="mono text-xs" style="color:var(--text-muted)">Tag: TIC-301 / SIC-301</div>
+          </div>
+          <div class="mono text-xs" style="color:var(--accent2)" id="trend-tk301-now">—</div>
+        </div>
+        <canvas id="chart-homo" height="130"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 탭: 원료 투입 이력 ===== -->
+  <div id="tab-ingredients" class="section">
+    <div class="grid grid-cols-3 gap-4 mb-4">
+      <div class="col-span-2 card">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h3 class="font-semibold text-sm" style="color:var(--accent)">배치 원료 투입 순서 — BT-2024-0891-A</h3>
+            <div class="mono text-xs mt-1" style="color:var(--text-muted)">레시피: R-TONER-WH-200 v3.2 · 로봇: R001, R002 자동 투입</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span style="background:rgba(0,255,157,0.1);border:1px solid rgba(0,255,157,0.3);color:var(--accent2);padding:2px 8px;border-radius:4px;font-size:11px;font-weight:700;">진행중</span>
+            <span class="mono text-xs" style="color:var(--text-muted)">78% 완료</span>
+          </div>
+        </div>
+        <div class="space-y-2" id="ingredient-list"></div>
+      </div>
+      <div class="card">
+        <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">투입 현황 요약</h3>
+        <div class="space-y-3">
+          <div class="card-sm">
+            <div class="text-xs mb-1" style="color:var(--text-muted)">총 원료 수</div>
+            <div class="mono text-xl font-bold" style="color:var(--accent)">10<span class="text-sm text-slate-400 font-normal"> 종</span></div>
+          </div>
+          <div class="card-sm">
+            <div class="text-xs mb-1" style="color:var(--text-muted)">투입 완료</div>
+            <div class="mono text-xl font-bold" style="color:var(--accent2)" id="ing-done-count">—</div>
+          </div>
+          <div class="card-sm">
+            <div class="text-xs mb-1" style="color:var(--text-muted)">현재 투입중</div>
+            <div class="mono text-xl font-bold" style="color:var(--accent)" id="ing-doing">—</div>
+          </div>
+          <div class="card-sm">
+            <div class="text-xs mb-1" style="color:var(--text-muted)">잔여</div>
+            <div class="mono text-xl font-bold text-white" id="ing-pending-count">—</div>
+          </div>
+          <div class="card-sm">
+            <div class="text-xs mb-1" style="color:var(--text-muted)">총 투입량 (실적)</div>
+            <div class="mono text-lg font-bold text-white" id="ing-total-kg">—</div>
+          </div>
+          <div class="card-sm" style="background:rgba(0,212,255,0.05);border-color:rgba(0,212,255,0.2);">
+            <div class="text-xs mb-1" style="color:var(--text-muted)">배치 진행률</div>
+            <div class="mono text-xl font-bold" style="color:var(--accent)">78%</div>
+            <div class="gauge-bar mt-2">
+              <div class="gauge-fill gauge-ok" style="width:78%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 탭: 밸브 / 유량 ===== -->
+  <div id="tab-valves" class="section">
+    <div class="card mb-4">
+      <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">
+        <i class="fas fa-tint mr-2"></i>원료 공급 밸브 및 유량 제어 현황
+      </h3>
+      <div class="grid grid-cols-3 gap-3" id="valve-grid"></div>
+    </div>
+    <div class="card">
+      <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">PLC 주소 맵 (Modbus / OPC-UA)</h3>
+      <div class="overflow-x-auto">
+        <table class="w-full text-xs mono">
+          <thead>
+            <tr style="border-bottom:1px solid var(--border)">
+              <th class="text-left py-2 px-3" style="color:var(--text-muted)">태그</th>
+              <th class="text-left py-2 px-3" style="color:var(--text-muted)">설명</th>
+              <th class="text-left py-2 px-3" style="color:var(--text-muted)">PLC 주소</th>
+              <th class="text-left py-2 px-3" style="color:var(--text-muted)">현재값</th>
+              <th class="text-left py-2 px-3" style="color:var(--text-muted)">단위</th>
+              <th class="text-left py-2 px-3" style="color:var(--text-muted)">상태</th>
+            </tr>
+          </thead>
+          <tbody id="plc-addr-table" style="divide-y divide-gray-700"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 탭: 인터락 / 알람 ===== -->
+  <div id="tab-interlocks" class="section">
+    <div class="grid grid-cols-2 gap-4">
+      <div class="card">
+        <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">
+          <i class="fas fa-shield-alt mr-2"></i>PLC 인터락 상태
+        </h3>
+        <div class="space-y-2" id="interlock-list"></div>
+      </div>
+      <div class="card">
+        <h3 class="font-semibold text-sm mb-4" style="color:var(--warn)">
+          <i class="fas fa-bell mr-2"></i>알람 이력 (최근 24시간)
+        </h3>
+        <div class="space-y-2" id="alarm-history"></div>
+      </div>
+    </div>
+    <div class="card mt-4">
+      <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">
+        <i class="fas fa-microchip mr-2"></i>PLC I/O 상태 요약
+      </h3>
+      <div class="grid grid-cols-4 gap-3">
+        <div class="card-sm text-center">
+          <div class="text-xs mb-1" style="color:var(--text-muted)">디지털 입력 (DI)</div>
+          <div class="mono text-xl font-bold" style="color:var(--accent)">128</div>
+          <div class="text-xs" style="color:var(--accent2)">정상</div>
+        </div>
+        <div class="card-sm text-center">
+          <div class="text-xs mb-1" style="color:var(--text-muted)">디지털 출력 (DO)</div>
+          <div class="mono text-xl font-bold" style="color:var(--accent)">96</div>
+          <div class="text-xs" style="color:var(--accent2)">정상</div>
+        </div>
+        <div class="card-sm text-center">
+          <div class="text-xs mb-1" style="color:var(--text-muted)">아날로그 입력 (AI)</div>
+          <div class="mono text-xl font-bold" style="color:var(--accent)">64</div>
+          <div class="text-xs" style="color:var(--warn)">1개 경고</div>
+        </div>
+        <div class="card-sm text-center">
+          <div class="text-xs mb-1" style="color:var(--text-muted)">아날로그 출력 (AO)</div>
+          <div class="mono text-xl font-bold" style="color:var(--accent)">32</div>
+          <div class="text-xs" style="color:var(--accent2)">정상</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 탭: 배치 레시피 ===== -->
+  <div id="tab-recipes" class="section">
+    <div class="grid grid-cols-3 gap-4">
+      <div class="col-span-1 card">
+        <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">레시피 목록</h3>
+        <div class="space-y-2" id="recipe-list"></div>
+      </div>
+      <div class="col-span-2 card" id="recipe-detail-panel">
+        <h3 class="font-semibold text-sm mb-4" style="color:var(--accent)">레시피 상세 — R-TONER-WH-200</h3>
+        <div class="grid grid-cols-3 gap-3 mb-4">
+          <div class="card-sm"><div class="text-xs" style="color:var(--text-muted)">버전</div><div class="mono font-bold" style="color:var(--accent)">v3.2</div></div>
+          <div class="card-sm"><div class="text-xs" style="color:var(--text-muted)">공정 단계</div><div class="mono font-bold text-white">8 단계</div></div>
+          <div class="card-sm"><div class="text-xs" style="color:var(--text-muted)">총 소요시간</div><div class="mono font-bold text-white">120 분</div></div>
+        </div>
+        <div class="space-y-2">
+          ${[
+            { step: 1, name: '정제수 투입 및 예열', param: '온도 SP: 70°C / 교반: 80 RPM', time: '15분', color: 'var(--accent2)' },
+            { step: 2, name: '수용성 원료 계량 투입', param: '글리세린, 부틸렌글라이콜, 나이아신아마이드', time: '20분', color: 'var(--accent)' },
+            { step: 3, name: '가열 및 분산', param: '온도 SP: 72°C / 교반: 145 RPM', time: '25분', color: 'var(--accent)' },
+            { step: 4, name: '기능성 원료 투입', param: '히알루론산, 판테놀, 알란토인', time: '15분', color: 'var(--accent)' },
+            { step: 5, name: '균질화 (호모믹서 이송)', param: '이송 후 3,200 RPM 균질화', time: '20분', color: 'var(--accent)' },
+            { step: 6, name: '냉각', param: '냉각수 투입 / 목표 온도: 35°C', time: '15분', color: 'var(--text-muted)' },
+            { step: 7, name: '방부제·향료 투입', param: '페녹시에탄올, 향료, pH 조정제', time: '5분', color: 'var(--text-muted)' },
+            { step: 8, name: 'QC 샘플링 및 승인', param: '점도, pH, 외관 검사', time: '5분', color: 'var(--text-muted)' },
+          ].map(s => `
+            <div style="display:flex;align-items:flex-start;gap:12px;padding:10px;background:var(--surface2);border-radius:6px;border-left:3px solid ${s.color};">
+              <div style="width:22px;height:22px;border-radius:50%;background:rgba(0,212,255,0.15);border:1px solid rgba(0,212,255,0.3);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                <span style="font-size:10px;color:var(--accent);font-weight:700;">${s.step}</span>
+              </div>
+              <div style="flex:1;">
+                <div style="font-size:13px;font-weight:600;color:#c8dff5;">${s.name}</div>
+                <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${s.param}</div>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);flex-shrink:0;">${s.time}</div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+let plcData = null;
+let charts = {};
+let selectedTank = 'TK-101';
+
+// ======== 데이터 로드 ========
+async function loadAll() {
+  const [plcRes, recipeRes] = await Promise.all([
+    fetch('/api/plc/mixing'),
+    fetch('/api/recipes'),
+  ]);
+  plcData = await plcRes.json();
+  const recipes = await recipeRes.json();
+
+  document.getElementById('plc-ts').textContent = new Date(plcData.ts).toLocaleTimeString('ko-KR');
+
+  renderKPIs();
+  renderTankGrid();
+  renderPID();
+  renderTrends();
+  renderIngredients();
+  renderValves();
+  renderInterlocks();
+  renderRecipes(recipes);
+}
+
+// ======== KPI ========
+function renderKPIs() {
+  const active = plcData.tanks.filter(t => t.status !== 'idle').length;
+  const batches = plcData.tanks.filter(t => t.status === 'mixing' || t.status === 'heating').length;
+  const warnIL = plcData.interlocks.filter(i => i.status !== 'normal').length;
+  const openV = plcData.valves.filter(v => v.status === 'open').length;
+  document.getElementById('kpi-active-tanks').textContent = active;
+  document.getElementById('kpi-batches').textContent = batches;
+  document.getElementById('kpi-interlocks').textContent = warnIL;
+  document.getElementById('kpi-valves').textContent = openV;
+}
+
+// ======== 탱크 그리드 ========
+function renderTankGrid() {
+  const el = document.getElementById('tank-grid');
+  el.innerHTML = plcData.tanks.map(tk => {
+    const fillPct = tk.capacity > 0 ? (tk.current / tk.capacity * 100).toFixed(1) : 0;
+    const badgeHtml = {
+      mixing: '<span class="badge-mixing">교반중</span>',
+      heating: '<span class="badge-heating">가열중</span>',
+      complete: '<span class="badge-complete">완료</span>',
+      idle: '<span class="badge-idle">대기</span>',
+    }[tk.status] || '';
+    const tempDev = tk.tempSP > 0 ? (tk.temp - tk.tempSP).toFixed(1) : null;
+    const devClass = tempDev === null ? '' : Math.abs(tempDev) <= 1 ? 'deviation-ok' : Math.abs(tempDev) <= 3 ? 'deviation-warn' : 'deviation-alarm';
+    return \`
+      <div class="card tank-card \${selectedTank===tk.id?'selected':''}" onclick="selectTank('\${tk.id}')">
+        <div class="flex items-start justify-between mb-2">
+          <div>
+            <div class="mono text-xs" style="color:var(--accent);\${tk.status==='idle'?'opacity:0.5':''}">\${tk.id}</div>
+            <div class="text-sm font-semibold" style="color:#c8dff5;">\${tk.name}</div>
+          </div>
+          \${badgeHtml}
+        </div>
+
+        \${tk.status !== 'idle' ? \`
+        <!-- 온도 표시 -->
+        <div class="flex items-end gap-1 mb-1">
+          <span class="mono" style="font-size:22px;font-weight:700;color:var(--accent);text-shadow:0 0 10px rgba(0,212,255,0.5);">\${tk.temp.toFixed(1)}</span>
+          <span class="mono text-xs" style="color:var(--text-muted);margin-bottom:4px;">°C</span>
+          \${tempDev !== null ? \`<span class="\${devClass}" style="margin-bottom:4px;">\${tempDev >= 0 ? '+' : ''}\${tempDev}</span>\` : ''}
+        </div>
+        <div class="mono text-xs mb-2" style="color:var(--text-muted)">SP: \${tk.tempSP}°C</div>
+
+        <!-- 레벨 게이지 -->
+        <div class="flex items-center gap-2 mb-1">
+          <div class="gauge-bar flex-1">
+            <div class="gauge-fill \${tk.status==='complete'?'gauge-ok':'gauge-ok'}" style="width:\${fillPct}%"></div>
+          </div>
+          <span class="mono text-xs" style="color:var(--accent2);">\${fillPct}%</span>
+        </div>
+        <div class="mono text-xs mb-2" style="color:var(--text-muted)">\${Math.round(tk.current)} / \${tk.capacity} kg</div>
+
+        <!-- 교반 RPM -->
+        <div class="flex items-center justify-between">
+          <span class="text-xs" style="color:var(--text-muted)">교반</span>
+          <span class="mono text-xs" style="color:\${tk.status==='mixing'?'var(--accent2)':'#6b93b8'};">\${tk.agitatorRPM.toFixed(0)} RPM</span>
+        </div>
+
+        <!-- 배치 진행률 -->
+        \${tk.batchNo !== '—' ? \`
+        <div class="mt-2 pt-2" style="border-top:1px solid var(--border)">
+          <div class="flex justify-between text-xs mb-1">
+            <span class="mono" style="color:var(--text-muted);">\${tk.batchNo}</span>
+            <span class="mono" style="color:var(--accent);">\${tk.batchProgress}%</span>
+          </div>
+          <div class="gauge-bar">
+            <div class="gauge-fill \${tk.batchProgress>=100?'gauge-ok':'gauge-ok'}" style="width:\${Math.min(100,tk.batchProgress)}%"></div>
+          </div>
+          <div class="flex justify-between text-xs mt-1">
+            <span style="color:var(--text-muted)">경과 \${tk.elapsedMin}분</span>
+            <span style="color:\${tk.remainMin>0?'var(--warn)':'var(--accent2)'};">\${tk.remainMin>0?'잔여 '+tk.remainMin+'분':'완료'}</span>
+          </div>
+        </div>
+        \` : ''}
+        \` : \`
+        <div class="text-center py-4" style="color:var(--text-muted);opacity:0.5;">
+          <i class="fas fa-power-off text-2xl mb-2"></i>
+          <div class="text-xs">대기 중</div>
+        </div>
+        \`}
+      </div>
+    \`;
+  }).join('');
+}
+
+// ======== 탱크 선택 ========
+function selectTank(id) {
+  selectedTank = id;
+  renderTankGrid();
+  const tank = plcData.tanks.find(t => t.id === id);
+  if (!tank || tank.status === 'idle') {
+    document.getElementById('tank-detail-panel').classList.add('hidden');
+    return;
+  }
+  const panel = document.getElementById('tank-detail-panel');
+  panel.classList.remove('hidden');
+
+  const fillPct = (tank.current / tank.capacity * 100).toFixed(1);
+  const tempDev = (tank.temp - tank.tempSP).toFixed(2);
+  const presDev = (tank.pressure - tank.pressureSP).toFixed(3);
+  const rpmDev = (tank.agitatorRPM - tank.agitatorSP).toFixed(0);
+
+  document.getElementById('tank-detail-content').innerHTML = \`
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <div class="flex items-center gap-3">
+          <span class="mono font-bold" style="color:var(--accent);font-size:18px;">\${tank.id}</span>
+          <span class="text-white font-semibold">\${tank.name}</span>
+          <span class="mono text-xs" style="color:var(--text-muted);">PLC: \${tank.plcAddr}</span>
+        </div>
+        <div class="text-xs mt-1" style="color:var(--text-muted)">레시피: \${tank.recipe} · 배치: \${tank.batchNo}</div>
+      </div>
+      <div class="text-right">
+        <div class="text-xs" style="color:var(--text-muted)">경과 / 잔여</div>
+        <div class="mono text-sm" style="color:var(--warn)">\${tank.elapsedMin}분 경과 / \${tank.remainMin}분 잔여</div>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-4 gap-3 mb-4">
+      <!-- 온도 -->
+      <div class="card-sm">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">온도 (TIC)</div>
+        <div class="flex items-end gap-1">
+          <span class="mono" style="font-size:26px;font-weight:700;color:var(--accent);text-shadow:0 0 10px rgba(0,212,255,0.5);">\${tank.temp.toFixed(1)}</span>
+          <span style="color:var(--text-muted);margin-bottom:3px;">°C</span>
+        </div>
+        <div class="mono text-xs" style="color:var(--text-muted)">SP: \${tank.tempSP}°C</div>
+        <div class="mono text-xs \${Math.abs(tempDev)<=1?'deviation-ok':Math.abs(tempDev)<=3?'deviation-warn':'deviation-alarm'}">편차: \${tempDev>=0?'+':''}\${tempDev}°C</div>
+        <div class="gauge-bar mt-2">
+          <div class="gauge-fill \${Math.abs(tempDev)<=1?'gauge-ok':Math.abs(tempDev)<=3?'gauge-warn':'gauge-high'}" style="width:\${Math.min(100, tank.temp/85*100).toFixed(0)}%"></div>
+        </div>
+      </div>
+      <!-- 압력 -->
+      <div class="card-sm">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">압력 (PIC)</div>
+        <div class="flex items-end gap-1">
+          <span class="mono" style="font-size:26px;font-weight:700;color:var(--accent);text-shadow:0 0 10px rgba(0,212,255,0.5);">\${tank.pressure.toFixed(2)}</span>
+          <span style="color:var(--text-muted);margin-bottom:3px;">bar</span>
+        </div>
+        <div class="mono text-xs" style="color:var(--text-muted)">SP: \${tank.pressureSP} bar</div>
+        <div class="mono text-xs \${Math.abs(presDev)<=0.05?'deviation-ok':Math.abs(presDev)<=0.2?'deviation-warn':'deviation-alarm'}">편차: \${presDev>=0?'+':''}\${presDev}</div>
+        <div class="gauge-bar mt-2">
+          <div class="gauge-fill \${Math.abs(presDev)<=0.05?'gauge-ok':Math.abs(presDev)<=0.2?'gauge-warn':'gauge-high'}" style="width:\${Math.min(100, tank.pressure/3.5*100).toFixed(0)}%"></div>
+        </div>
+      </div>
+      <!-- 교반 -->
+      <div class="card-sm">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">교반 속도 (SIC)</div>
+        <div class="flex items-end gap-1">
+          <span class="mono" style="font-size:26px;font-weight:700;color:var(--accent);text-shadow:0 0 10px rgba(0,212,255,0.5);">\${tank.agitatorRPM.toFixed(0)}</span>
+          <span style="color:var(--text-muted);margin-bottom:3px;">RPM</span>
+        </div>
+        <div class="mono text-xs" style="color:var(--text-muted)">SP: \${tank.agitatorSP} RPM</div>
+        <div class="mono text-xs \${Math.abs(rpmDev)<=5?'deviation-ok':Math.abs(rpmDev)<=15?'deviation-warn':'deviation-alarm'}">편차: \${rpmDev>=0?'+':''}\${rpmDev}</div>
+        <div class="gauge-bar mt-2">
+          <div class="gauge-fill gauge-ok" style="width:\${Math.min(100, tank.agitatorRPM/5000*100).toFixed(0)}%"></div>
+        </div>
+      </div>
+      <!-- 점도 / 레벨 -->
+      <div class="card-sm">
+        <div class="text-xs mb-1" style="color:var(--text-muted)">점도 / 레벨</div>
+        <div class="flex items-end gap-1">
+          <span class="mono" style="font-size:22px;font-weight:700;color:var(--accent);">\${tank.viscosity > 0 ? tank.viscosity.toFixed(0) : '—'}</span>
+          <span style="color:var(--text-muted);margin-bottom:3px;font-size:11px;">\${tank.viscosity > 0 ? 'cP' : ''}</span>
+        </div>
+        <div class="mono text-xs" style="color:var(--text-muted)">레벨: \${fillPct}%</div>
+        <div class="mono text-xs" style="color:var(--accent2)">\${Math.round(tank.current)} / \${tank.capacity} kg</div>
+        <div class="gauge-bar mt-2">
+          <div class="gauge-fill gauge-ok" style="width:\${fillPct}%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 배치 진행 타임라인 -->
+    <div>
+      <div class="text-xs font-semibold mb-2" style="color:var(--text-muted)">배치 진행률</div>
+      <div class="flex items-center gap-3">
+        <div class="gauge-bar flex-1" style="height:12px;">
+          <div class="gauge-fill gauge-ok" style="width:\${tank.batchProgress}%;height:12px;"></div>
+        </div>
+        <span class="mono font-bold" style="color:var(--accent);">\${tank.batchProgress}%</span>
+      </div>
+    </div>
+  \`;
+}
+
+// ======== P&ID 실시간 업데이트 ========
+function renderPID() {
+  const tk101 = plcData.tanks[0];
+  const tk102 = plcData.tanks[1];
+  const tk201 = plcData.tanks[2];
+  const tk301 = plcData.tanks[4];
+  if (!tk101 || !tk301) return;
+  const el = (id, val) => { const e = document.getElementById(id); if(e) e.textContent = val; };
+  el('pid-tk101-temp', tk101.temp.toFixed(1) + '°C');
+  el('pid-tk101-rpm', tk101.agitatorRPM.toFixed(0) + ' RPM');
+  el('pid-tk102-temp', tk102.temp.toFixed(1) + '°C');
+  el('pid-tk201-temp', tk201.temp.toFixed(1) + '°C');
+  el('pid-tk301-temp', tk301.temp.toFixed(1) + '°C');
+  el('pid-tk301-rpm', tk301.agitatorRPM.toFixed(0) + ' RPM');
+}
+
+// ======== 트렌드 차트 ========
+function renderTrends() {
+  const hist = plcData.trendHistory;
+  const labels = hist.map(h => h.label);
+  const last = hist.length > 0 ? hist[hist.length - 1] : {};
+
+  const el = (id, val) => { const e = document.getElementById(id); if(e) e.textContent = val; };
+  el('trend-tk101-temp-now', last.temp101 + '°C');
+  el('trend-tk101-pres-now', last.pressure101 + ' bar');
+  el('trend-tk101-rpm-now', last.rpm101 + ' RPM');
+  el('trend-tk301-now', last.temp301 + '°C / ' + last.rpm301 + ' RPM');
+
+  const chartOptions = (yLabel, min, max, color) => ({
+    responsive: true,
+    animation: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#6b93b8', font: { size: 9, family: 'JetBrains Mono' }, maxTicksLimit: 10 }, grid: { color: 'rgba(30,64,96,0.5)' } },
+      y: { title: { display: true, text: yLabel, color: '#6b93b8', font: { size: 9 } }, ticks: { color: '#6b93b8', font: { size: 9, family: 'JetBrains Mono' } }, grid: { color: 'rgba(30,64,96,0.5)' }, min, max }
+    }
+  });
+
+  const spLine = (val, len) => Array(len).fill(val);
+
+  if (!charts.temp101) {
+    charts.temp101 = new Chart(document.getElementById('chart-temp101'), {
+      type: 'line', data: {
+        labels,
+        datasets: [
+          { label: 'PV', data: hist.map(h => h.temp101), borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.05)', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
+          { label: 'SP', data: spLine(72.0, labels.length), borderColor: '#ff3d5a', borderWidth: 1, borderDash: [4,3], pointRadius: 0 },
+        ]
+      }, options: chartOptions('°C', 65, 80)
+    });
+  } else {
+    charts.temp101.data.labels = labels;
+    charts.temp101.data.datasets[0].data = hist.map(h => h.temp101);
+    charts.temp101.update('none');
+  }
+
+  if (!charts.pres101) {
+    charts.pres101 = new Chart(document.getElementById('chart-pres101'), {
+      type: 'line', data: {
+        labels,
+        datasets: [
+          { label: 'PV', data: hist.map(h => h.pressure101), borderColor: '#00ff9d', backgroundColor: 'rgba(0,255,157,0.05)', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
+          { label: 'SP', data: spLine(1.80, labels.length), borderColor: '#ff3d5a', borderWidth: 1, borderDash: [4,3], pointRadius: 0 },
+        ]
+      }, options: chartOptions('bar', 1.6, 2.1)
+    });
+  } else {
+    charts.pres101.data.labels = labels;
+    charts.pres101.data.datasets[0].data = hist.map(h => h.pressure101);
+    charts.pres101.update('none');
+  }
+
+  if (!charts.rpm101) {
+    charts.rpm101 = new Chart(document.getElementById('chart-rpm101'), {
+      type: 'line', data: {
+        labels,
+        datasets: [
+          { label: 'PV', data: hist.map(h => h.rpm101), borderColor: '#a78bfa', backgroundColor: 'rgba(167,139,250,0.05)', borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: true },
+          { label: 'SP', data: spLine(145, labels.length), borderColor: '#ff3d5a', borderWidth: 1, borderDash: [4,3], pointRadius: 0 },
+        ]
+      }, options: chartOptions('RPM', 130, 160)
+    });
+  } else {
+    charts.rpm101.data.labels = labels;
+    charts.rpm101.data.datasets[0].data = hist.map(h => h.rpm101);
+    charts.rpm101.update('none');
+  }
+
+  if (!charts.homo) {
+    charts.homo = new Chart(document.getElementById('chart-homo'), {
+      type: 'line', data: {
+        labels,
+        datasets: [
+          { label: '온도(°C)', data: hist.map(h => h.temp301), borderColor: '#00d4ff', backgroundColor: 'rgba(0,212,255,0.03)', borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: 'y' },
+          { label: 'RPM', data: hist.map(h => h.rpm301 / 100), borderColor: '#f59e0b', borderWidth: 1.5, pointRadius: 0, tension: 0.3, yAxisID: 'y2', borderDash: [3,2] },
+        ]
+      }, options: {
+        responsive: true, animation: false,
+        plugins: { legend: { labels: { color: '#6b93b8', font: { size: 10 }, boxWidth: 12 } } },
+        scales: {
+          x: { ticks: { color: '#6b93b8', font: { size: 9, family: 'JetBrains Mono' }, maxTicksLimit: 10 }, grid: { color: 'rgba(30,64,96,0.5)' } },
+          y: { position: 'left', ticks: { color: '#00d4ff', font: { size: 9, family: 'JetBrains Mono' } }, grid: { color: 'rgba(30,64,96,0.3)' }, min: 60, max: 75, title: { display: true, text: '온도(°C)', color: '#00d4ff', font: { size: 9 } } },
+          y2: { position: 'right', ticks: { color: '#f59e0b', font: { size: 9, family: 'JetBrains Mono' }, callback: v => v*100 }, grid: { display: false }, min: 30, max: 35, title: { display: true, text: 'RPM(×100)', color: '#f59e0b', font: { size: 9 } } },
+        }
+      }
+    });
+  } else {
+    charts.homo.data.labels = labels;
+    charts.homo.data.datasets[0].data = hist.map(h => h.temp301);
+    charts.homo.data.datasets[1].data = hist.map(h => h.rpm301 / 100);
+    charts.homo.update('none');
+  }
+}
+
+// ======== 원료 투입 이력 ========
+function renderIngredients() {
+  const ings = plcData.ingredients;
+  const el = document.getElementById('ingredient-list');
+  el.innerHTML = ings.map(ing => {
+    const cls = { done: 'step-done', doing: 'step-doing', pending: 'step-pending' }[ing.status];
+    const icon = { done: 'fa-check-circle', doing: 'fa-spinner fa-spin', pending: 'fa-circle' }[ing.status];
+    const iconColor = { done: 'var(--accent2)', doing: 'var(--accent)', pending: 'var(--border2)' }[ing.status];
+    const accuracy = ing.actual > 0 ? ((Math.abs(ing.actual - ing.amount) / ing.amount) * 100).toFixed(2) : null;
+    return \`
+      <div class="\${cls} rounded p-3">
+        <div class="flex items-center gap-3">
+          <span class="mono text-xs" style="color:var(--text-muted);width:20px;text-align:right;">\${ing.seq}</span>
+          <i class="fas \${icon}" style="color:\${iconColor};font-size:14px;width:16px;text-align:center;"></i>
+          <div class="flex-1">
+            <div class="text-sm font-semibold" style="color:#c8dff5;">\${ing.name}</div>
+            <div class="flex items-center gap-3 mt-1">
+              <span class="mono text-xs" style="color:var(--text-muted)">계획: \${ing.amount} \${ing.unit}</span>
+              \${ing.actual > 0 ? \`<span class="mono text-xs" style="color:var(--accent2)">실적: \${ing.actual} \${ing.unit}</span>\` : ''}
+              \${accuracy !== null ? \`<span class="mono text-xs \${parseFloat(accuracy)<=0.5?'deviation-ok':parseFloat(accuracy)<=1?'deviation-warn':'deviation-alarm'}">정확도: \${(100-parseFloat(accuracy)).toFixed(2)}%</span>\` : ''}
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="mono text-xs" style="color:var(--text-muted)">\${ing.time}</div>
+            <div class="mono text-xs mt-1" style="color:var(--text-muted)">로봇: \${ing.robot}</div>
+          </div>
+        </div>
+      </div>
+    \`;
+  }).join('');
+
+  const done = ings.filter(i => i.status === 'done');
+  const doing = ings.find(i => i.status === 'doing');
+  const pending = ings.filter(i => i.status === 'pending');
+  const totalKg = done.reduce((sum, i) => sum + i.actual, 0);
+  const el2 = (id, v) => { const e = document.getElementById(id); if(e) e.textContent = v; };
+  el2('ing-done-count', done.length + ' 종');
+  el2('ing-doing', doing ? doing.name.split(' ')[0] + '...' : '—');
+  el2('ing-pending-count', pending.length + ' 종');
+  el2('ing-total-kg', totalKg.toFixed(1) + ' kg');
+}
+
+// ======== 밸브 / 유량 ========
+function renderValves() {
+  const el = document.getElementById('valve-grid');
+  el.innerHTML = plcData.valves.map(v => {
+    const isOpen = v.status === 'open';
+    const devPct = v.flowSP > 0 ? Math.abs((v.flow - v.flowSP) / v.flowSP * 100).toFixed(1) : 0;
+    return \`
+      <div class="\${isOpen ? 'valve-open' : 'valve-closed'} p-3">
+        <div class="flex items-start justify-between mb-2">
+          <div>
+            <div class="mono text-xs font-bold" style="color:\${isOpen?'var(--accent)':'var(--text-muted)'};">\${v.tag}</div>
+            <div class="text-sm font-semibold mt-0.5" style="color:#c8dff5;">\${v.name}</div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span style="width:8px;height:8px;border-radius:50%;display:inline-block;" class="\${isOpen?'valve-dot-open':' valve-dot-closed'}"></span>
+            <span class="mono text-xs font-bold" style="color:\${isOpen?'var(--accent2)':'var(--text-muted)'};">\${isOpen?'개방':'닫힘'}</span>
+          </div>
+        </div>
+        \${isOpen ? \`
+        <div class="flex items-end gap-1 mb-1">
+          <span class="mono font-bold" style="font-size:20px;color:var(--accent);">\${v.flow.toFixed(2)}</span>
+          <span class="mono text-xs" style="color:var(--text-muted);margin-bottom:2px;">\${v.unit}</span>
+        </div>
+        <div class="mono text-xs" style="color:var(--text-muted)">SP: \${v.flowSP} \${v.unit} · 편차: \${devPct}%</div>
+        <div class="gauge-bar mt-2">
+          <div class="gauge-fill \${devPct<=2?'gauge-ok':devPct<=5?'gauge-warn':'gauge-high'}" style="width:\${Math.min(100, v.flow/Math.max(v.flowSP,1)*100).toFixed(0)}%"></div>
+        </div>
+        \` : \`<div class="mono text-xs mt-1" style="color:var(--text-muted);">유량: 0.00 \${v.unit}</div>\`}
+        <div class="mono text-xs mt-2" style="color:var(--border2);">PLC: \${v.plcAddr}</div>
+      </div>
+    \`;
+  }).join('');
+
+  const tableEl = document.getElementById('plc-addr-table');
+  tableEl.innerHTML = plcData.valves.map(v => \`
+    <tr style="border-bottom:1px solid var(--border)">
+      <td class="py-2 px-3" style="color:var(--accent);">\${v.tag}</td>
+      <td class="py-2 px-3" style="color:#c8dff5;">\${v.name}</td>
+      <td class="py-2 px-3" style="color:var(--text-muted);">\${v.plcAddr}</td>
+      <td class="py-2 px-3" style="color:\${v.status==='open'?'var(--accent2)':'var(--text-muted)'};">\${v.flow.toFixed(2)}</td>
+      <td class="py-2 px-3" style="color:var(--text-muted);">\${v.unit}</td>
+      <td class="py-2 px-3"><span style="padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;\${v.status==='open'?'background:rgba(0,255,157,0.1);color:var(--accent2);border:1px solid rgba(0,255,157,0.3);':'background:rgba(107,147,184,0.1);color:var(--text-muted);border:1px solid var(--border);'}">\${v.status==='open'?'OPEN':'CLOSED'}</span></td>
+    </tr>
+  \`).join('');
+}
+
+// ======== 인터락 ========
+function renderInterlocks() {
+  const el = document.getElementById('interlock-list');
+  el.innerHTML = plcData.interlocks.map(il => {
+    const cls = { normal: 'interlock-normal', warning: 'interlock-warning', alarm: 'interlock-alarm' }[il.status];
+    const icon = { normal: 'fa-check-shield', warning: 'fa-exclamation-triangle', alarm: 'fa-times-circle' }[il.status] || 'fa-shield-alt';
+    const color = { normal: 'var(--accent2)', warning: 'var(--warn)', alarm: 'var(--danger)' }[il.status];
+    const pct = (il.value / il.limit * 100).toFixed(0);
+    return \`
+      <div class="\${cls} p-3">
+        <div class="flex items-start justify-between mb-2">
+          <div class="flex items-center gap-2">
+            <i class="fas \${icon}" style="color:\${color};"></i>
+            <div>
+              <div class="mono text-xs font-bold" style="color:\${color};">\${il.tag}</div>
+              <div class="text-sm" style="color:#c8dff5;">\${il.desc}</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="mono font-bold" style="color:\${color};font-size:18px;">\${il.value}</div>
+            <div class="mono text-xs" style="color:var(--text-muted)">한계: \${il.limit} \${il.unit}</div>
+          </div>
+        </div>
+        <div class="gauge-bar">
+          <div class="gauge-fill \${pct>=90?'gauge-high':pct>=70?'gauge-warn':'gauge-ok'}" style="width:\${Math.min(100,pct)}%"></div>
+        </div>
+        <div class="mono text-xs mt-1" style="color:var(--text-muted)">현재값의 \${pct}% 도달</div>
+      </div>
+    \`;
+  }).join('');
+
+  const alarmEl = document.getElementById('alarm-history');
+  const alarms = [
+    { time: '16:42', level: 'warning', tag: 'AIC-101', msg: '교반기 전류 상승 — 38.2A (한계 40A)', ack: true },
+    { time: '14:15', level: 'info', tag: 'TIC-102', msg: 'TK-102 가열 시작 — 목표온도 75°C 설정', ack: true },
+    { time: '12:30', level: 'warning', tag: 'FV-101', msg: '정제수 공급 유량 편차 5% 초과', ack: true },
+    { time: '10:05', level: 'info', tag: 'BT-0890', msg: '배치 BT-2024-0890-F 시작 — TK-301', ack: true },
+    { time: '09:12', level: 'info', tag: 'BT-0891', msg: '배치 BT-2024-0891-A 시작 — TK-101', ack: true },
+    { time: '08:55', level: 'alarm', tag: 'PIC-201', msg: 'TK-201 압력 이상 — 즉시 복구됨', ack: true },
+  ];
+  alarmEl.innerHTML = alarms.map(a => {
+    const color = { alarm: 'var(--danger)', warning: 'var(--warn)', info: 'var(--accent)' }[a.level];
+    const icon = { alarm: 'fa-times-circle', warning: 'fa-exclamation-triangle', info: 'fa-info-circle' }[a.level];
+    return \`
+      <div style="padding:10px;border-radius:6px;background:var(--surface2);border-left:3px solid \${color};">
+        <div class="flex items-start gap-2">
+          <i class="fas \${icon}" style="color:\${color};margin-top:2px;font-size:12px;"></i>
+          <div class="flex-1">
+            <div class="flex items-center gap-2">
+              <span class="mono text-xs font-bold" style="color:\${color};">\${a.tag}</span>
+              \${a.ack ? '<span style="font-size:10px;color:var(--accent2);">확인완료</span>' : '<span style="font-size:10px;color:var(--danger);font-weight:700;">미확인</span>'}
+            </div>
+            <div class="text-xs mt-0.5" style="color:#c8dff5;">\${a.msg}</div>
+            <div class="mono text-xs mt-0.5" style="color:var(--text-muted);">\${a.time}</div>
+          </div>
+        </div>
+      </div>
+    \`;
+  }).join('');
+}
+
+// ======== 레시피 목록 ========
+function renderRecipes(recipes) {
+  const el = document.getElementById('recipe-list');
+  el.innerHTML = recipes.map((r, i) => \`
+    <div onclick="this.closest('.space-y-2').querySelectorAll('div').forEach(d=>d.style.background='');this.style.background='rgba(0,212,255,0.08)';"
+         style="padding:12px;border-radius:6px;background:\${i===0?'rgba(0,212,255,0.08)':'var(--surface2)'};border:1px solid \${i===0?'rgba(0,212,255,0.25)':'var(--border)'};cursor:pointer;transition:all 0.2s;">
+      <div class="flex items-start justify-between mb-1">
+        <div class="mono text-xs font-bold" style="color:var(--accent);">\${r.id}</div>
+        <span style="padding:1px 6px;border-radius:3px;font-size:10px;font-weight:700;\${r.status==='active'?'background:rgba(0,255,157,0.1);color:var(--accent2);border:1px solid rgba(0,255,157,0.3);':'background:rgba(255,179,0,0.1);color:var(--warn);border:1px solid rgba(255,179,0,0.3);'}">\${r.status==='active'?'활성':'검토중'}</span>
+      </div>
+      <div class="text-sm font-semibold" style="color:#c8dff5;">\${r.name}</div>
+      <div class="mono text-xs mt-1" style="color:var(--text-muted);">\${r.version} · \${r.steps}단계 · \${r.totalTime}분</div>
+      <div class="mono text-xs" style="color:var(--text-muted);">최종수정: \${r.lastUpdated}</div>
+    </div>
+  \`).join('');
+}
+
+// ======== 탭 전환 ========
+function switchTab(name, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  document.querySelectorAll('.plc-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ======== 자동 폴링 (2초) ========
+loadAll();
+setInterval(loadAll, 2000);
+</script>
+</body>
+</html>`)
+})
+
 // 메인 페이지
 app.get('/', (c) => {
   return c.html(`<!DOCTYPE html>
@@ -318,6 +1602,13 @@ app.get('/', (c) => {
       <i class="fas fa-play-circle"></i>
       <span>운영 시나리오</span>
     </div>
+
+    <div class="text-xs text-slate-500 px-3 py-2 mt-2 font-semibold tracking-wider">PLC 연동</div>
+    <a href="/plc/mixing" class="nav-item" style="text-decoration:none;">
+      <i class="fas fa-flask" style="color:#00d4ff;"></i>
+      <span style="color:#67e8f9;">원료 혼합 Zone A</span>
+      <span class="ml-auto text-xs bg-blue-900/60 text-blue-300 px-1.5 py-0.5 rounded border border-blue-700/50">LIVE</span>
+    </a>
   </nav>
 
   <div class="p-3 border-t border-slate-700">
@@ -438,13 +1729,17 @@ app.get('/', (c) => {
         </div>
         <div class="flex items-center gap-2 overflow-x-auto pb-2">
           <!-- 공정 1 -->
-          <div class="zone-card zone-industrial min-w-32 flex-shrink-0">
+          <div class="zone-card zone-industrial min-w-36 flex-shrink-0 relative">
+            <a href="/plc/mixing" class="absolute top-2 right-2 text-xs bg-blue-600/40 hover:bg-blue-600/70 text-blue-300 px-2 py-0.5 rounded border border-blue-500/30 transition-colors" title="PLC 상세 보기">
+              <i class="fas fa-microchip mr-1"></i>PLC
+            </a>
             <div class="text-center">
               <div class="text-2xl mb-1">🏭</div>
               <div class="text-xs font-bold text-blue-300">원료 혼합</div>
               <div class="badge-industrial mt-1 inline-block">산업용</div>
               <div class="text-xs text-green-400 mt-2 font-medium">● 정상</div>
               <div class="text-xs text-slate-400 mt-1">2대 가동</div>
+              <a href="/plc/mixing" class="mt-2 inline-block text-xs text-blue-400 hover:text-blue-300 underline">PLC 상세 →</a>
             </div>
           </div>
           <div class="flow-arrow flex-shrink-0"><i class="fas fa-chevron-right"></i></div>
@@ -538,7 +1833,11 @@ app.get('/', (c) => {
         <!-- 공장 레이아웃 그리드 -->
         <div class="grid grid-cols-7 gap-3 items-center">
           <!-- 원료 혼합 -->
-          <div class="col-span-1 zone-card zone-industrial cursor-pointer" onclick="showZoneDetail('mixing')">
+          <div class="col-span-1 zone-card zone-industrial cursor-pointer relative" onclick="showZoneDetail('mixing')">
+            <a href="/plc/mixing" onclick="event.stopPropagation()"
+               class="absolute top-2 right-2 z-10 bg-blue-600/50 hover:bg-blue-600/80 text-blue-200 text-xs px-2 py-0.5 rounded border border-blue-400/40 transition-colors">
+              <i class="fas fa-microchip mr-1"></i>PLC
+            </a>
             <div class="text-3xl text-center mb-2">🏭</div>
             <div class="text-center">
               <div class="text-xs font-bold text-blue-300">Zone A</div>
@@ -547,6 +1846,7 @@ app.get('/', (c) => {
               <div class="text-xs text-green-400 mt-2">● 2대 가동</div>
               <div class="text-xs text-slate-400 mt-1">R001, R002</div>
               <div class="text-xs text-slate-400 mt-1">위험구역 격리</div>
+              <a href="/plc/mixing" onclick="event.stopPropagation()" class="mt-2 inline-block text-xs text-blue-400 hover:text-blue-300 underline">PLC 상세 →</a>
             </div>
           </div>
           <div class="flow-arrow"><i class="fas fa-arrow-right text-slate-500 text-xl"></i></div>
