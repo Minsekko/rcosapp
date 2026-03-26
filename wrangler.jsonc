@@ -3,32 +3,16 @@
   "name": "webapp",
   "compatibility_date": "2026-03-25",
   "pages_build_output_dir": "./dist",
-  "compatibility_flags": [
-    "nodejs_compat"
+  "compatibility_flags": ["nodejs_compat"],
+
+  // D1 데이터베이스 바인딩
+  // TODO: Cloudflare 대시보드에서 D1 DB 생성 후 database_id를 아래에 입력하세요
+  // 생성 방법: Workers & Pages → D1 → Create database → 이름: rcosapp-db
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "rcosapp-db",
+      "database_id": "YOUR_DATABASE_ID_HERE"
+    }
   ]
-  // "vars": {
-  //   "MY_VAR": "my-variable"
-  // },
-  // "kv_namespaces": [
-  //   {
-  //     "binding": "MY_KV_NAMESPACE",
-  //     "id": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
-  //   }
-  // ],
-  // "r2_buckets": [
-  //   {
-  //     "binding": "MY_BUCKET",
-  //     "bucket_name": "my-bucket"
-  //   }
-  // ],
-  // "d1_databases": [
-  //   {
-  //     "binding": "MY_DB",
-  //     "database_name": "my-database",
-  //     "database_id": ""
-  //   }
-  // ],
-  // "ai": {
-  //   "binding": "AI"
-  // }
 }
